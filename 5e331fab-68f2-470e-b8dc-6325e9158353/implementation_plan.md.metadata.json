@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary":  "Detailed implementation plan for building an Electron-based Windows desktop application (Aadhaar Photo Printer) for photo/print shop owners. Covers technology stack (Electron + Sharp + HTML/CSS print layout), project structure, all 6 major feature areas (photo processing, page layout, print controls, UI, file management, business features), packaging strategy, and verification plan.",
+  "updatedAt":  "2026-05-31T09:07:40.985084200Z",
+  "requestFeedback":  true
+}

@@ -1,0 +1,28 @@
+
+
+    Directory: C:\Users\DELL\.gemini\antigravity\scratch\aadhaar-photo-printer\src\renderer
+
+
+Mode                 LastWriteTime         Length Name                                                                 
+----                 -------------         ------ ----                                                                 
+d-----        31-05-2026     18:16                assets                                                               
+Copy-Item : Access is denied
+At line:1 char:130
++ ... er\assets"; Copy-Item -Path "C:\Users\DELL\.gemini\antigravity\brain\ ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (C:\Users\DELL\....80231569995.png:String) [Copy-Item], UnauthorizedAc 
+   cessException
+    + FullyQualifiedErrorId : ItemExistsUnauthorizedAccessError,Microsoft.PowerShell.Commands.CopyItemCommand
+ 
+Copy-Item : Cannot find path 
+'C:\Users\DELL\.gemini\antigravity\brain\5e331fab-68f2-470e-b8dc-6325e9158353\aadhaar_printer_icon_1780231569995.png' 
+because it does not exist.
+At line:1 char:130
++ ... er\assets"; Copy-Item -Path "C:\Users\DELL\.gemini\antigravity\brain\ ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (C:\Users\DELL\....80231569995.png:String) [Copy-Item], ItemNotFoundExce 
+   ption
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.CopyItemCommand
+ 
+
+

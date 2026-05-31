@@ -1,0 +1,60 @@
+{
+  "name": "aadhaar-photo-printer",
+  "version": "1.0.0",
+  "description": "Simple Aadhaar card photo printer for print shops",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "author": "Photo Print Shop",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "electron-store": "^10.0.0",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "electron": "^33.4.0",
+    "electron-builder": "^25.1.8",
+    "playwright": "^1.60.0"
+  },
+  "build": {
+    "appId": "com.aadhaar.photoprinter",
+    "productName": "Aadhaar Photo Printer",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icon.png",
+      "uninstallerIcon": "resources/icon.png"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sharp/**/*",
+      "**/node_modules/@img/**/*"
+    ],
+    "files": [
+      "src/**/*",
+      "resources/**/*"
+    ]
+  }
+}
