@@ -258,11 +258,35 @@ function ensureSharp() {
 // Exports
 // ============================================================================
 
+/**
+ * Rotates a base64-encoded image buffer by the specified angle.
+ *
+ * @param {string} base64Buffer - Base64-encoded image data
+ * @param {number} angle - Rotation angle in degrees (90, 180, 270, or -90)
+ * @returns {Promise<string>} - Base64-encoded rotated image
+ */
+async function rotateBase64Image(base64Buffer, angle) {
+  ensureSharp();
+
+  const buffer = Buffer.from(base64Buffer, 'base64');
+  const rotated = await sharp(buffer)
+    .rotate(angle)
+    .jpeg({ quality: DEFAULT_QUALITY, mozjpeg: true })
+    .toBuffer();
+
+  return rotated.toString('base64');
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
+
 module.exports = {
   processImage,
   processImages,
   getImageInfo,
   generateThumbnail,
+  rotateBase64Image,
   TARGET_WIDTH,
   TARGET_HEIGHT,
 };
