@@ -13,7 +13,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 
 // --- Module Imports ---
-const { processImage, processImages, getImageInfo, generateThumbnail } = require('./imageProcessor');
+const { processImage, processImages, getImageInfo, generateThumbnail, rotateBase64Image } = require('./imageProcessor');
 const { printPhotos, exportToPDF, getPrinters } = require('./printManager');
 const { DataStore } = require('./dataStore');
 const { saveToRecent, getRecentPhotos, backupPhotos, cleanupOldRecent } = require('./fileManager');
@@ -214,6 +214,16 @@ function registerIPCHandlers() {
       return { success: true, ...info };
     } catch (error) {
       console.error('[IPC] image:info error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('image:rotate', async (_event, base64Buffer, angle) => {
+    try {
+      const rotated = await rotateBase64Image(base64Buffer, angle);
+      return { success: true, buffer: rotated };
+    } catch (error) {
+      console.error('[IPC] image:rotate error:', error);
       return { success: false, error: error.message };
     }
   });

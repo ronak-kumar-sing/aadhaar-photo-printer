@@ -27,6 +27,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'image:process',
   'image:processBatch',
   'image:info',
+  'image:rotate',
   // Print
   'print:execute',
   'print:toPDF',
@@ -135,6 +136,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, width?: number, height?: number, format?: string, size?: number}>}
    */
   getImageInfo: (filePath) => safeInvoke('image:info', filePath),
+
+  /**
+   * Rotates a base64 image buffer by the specified angle.
+   * @param {string} base64Buffer - Base64-encoded image data
+   * @param {number} angle - Rotation angle in degrees
+   * @returns {Promise<{success: boolean, buffer?: string, error?: string}>}
+   */
+  rotateImage: (base64Buffer, angle) => safeInvoke('image:rotate', base64Buffer, angle),
 
   // --------------------------------------------------------------------------
   // Print Operations

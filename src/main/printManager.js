@@ -59,22 +59,30 @@ async function printPhotos(mainWindow, photos, options = {}) {
       color: true,
     };
 
+    let usedFallback = false;
+
+    // Try specific printer first if selected
     if (options.printerName) {
       printSettings.silent = true;
       printSettings.deviceName = options.printerName;
     }
 
-    const printResult = await new Promise((resolve, reject) => {
-      printWindow.webContents.print(printSettings, (success, failureReason) => {
-        if (success) {
-          resolve({ success: true });
-        } else {
-          reject(new Error(failureReason || 'Print was cancelled or failed.'));
-        }
-      });
-    });
+    let printResult = await executePrint(printWindow, printSettings);
 
-    return { success: true, pagesCount };
+    // If silent print failed, fallback to system dialog
+    if (!printResult.success && options.printerName) {
+      console.log('[PrintManager] Silent print failed, falling back to system print dialog.');
+      usedFallback = true;
+      printSettings.silent = false;
+      delete printSettings.deviceName;
+      printResult = await executePrint(printWindow, printSettings);
+    }
+
+    if (!printResult.success) {
+      throw new Error(printResult.error || 'Print was cancelled or failed.');
+    }
+
+    return { success: true, pagesCount, usedFallback };
   } catch (error) {
     console.error('[PrintManager] Print error:', error.message);
     return { success: false, pagesCount: 0, error: error.message };
@@ -416,6 +424,21 @@ function escapeHTML(str) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Executes print on a window and returns result.
+ */
+function executePrint(win, settings) {
+  return new Promise((resolve) => {
+    win.webContents.print(settings, (success, failureReason) => {
+      if (success) {
+        resolve({ success: true });
+      } else {
+        resolve({ success: false, error: failureReason || 'Print was cancelled or failed.' });
+      }
+    });
+  });
 }
 
 // ============================================================================
