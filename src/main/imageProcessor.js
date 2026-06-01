@@ -284,6 +284,226 @@ function ensureSharp() {
 }
 
 // ============================================================================
+// AI Enhancement Pipeline
+// ============================================================================
+
+/**
+ * Applies a full enhancement pipeline in a single Sharp pass.
+ * Supports: white balance, brightness, contrast, saturation, sharpening,
+ * background whitening, and histogram normalization.
+ *
+ * @param {Buffer} inputBuffer - Raw image buffer
+ * @param {Object} params - Enhancement parameters
+ * @param {number} [params.brightness=1.0] - Brightness factor
+ * @param {number} [params.contrast=1.0] - Contrast multiplier
+ * @param {number} [params.saturation=1.0] - Saturation factor
+ * @param {number} [params.sharpen=0] - Sharpen sigma (0 = off)
+ * @param {Object} [params.whiteBalance] - RGB multipliers { r, g, b }
+ * @param {number} [params.backgroundWhitening=0] - Whitening strength 0-1
+ * @param {boolean} [params.normalize=true] - Histogram normalization
+ * @param {number} [params.quality=95] - JPEG quality
+ * @param {number} [params.targetWidth] - Override target width
+ * @param {number} [params.targetHeight] - Override target height
+ *
+ * @returns {Promise<{buffer: Buffer, width: number, height: number, format: string}>}
+ */
+async function applyEnhancementPipeline(inputBuffer, params = {}) {
+  ensureSharp();
+
+  const targetW = params.targetWidth || TARGET_WIDTH;
+  const targetH = params.targetHeight || TARGET_HEIGHT;
+  const quality = params.quality != null ? params.quality : DEFAULT_QUALITY;
+  const shouldNormalize = params.normalize !== false;
+
+  let pipeline = sharp(inputBuffer)
+    .rotate()
+    .resize(targetW, targetH, {
+      fit: 'cover',
+      position: 'attention',
+      withoutEnlargement: false,
+    });
+
+  // Histogram normalization
+  if (shouldNormalize) {
+    pipeline = pipeline.normalise();
+  }
+
+  // White balance via channel multipliers (recomb matrix)
+  if (params.whiteBalance && typeof params.whiteBalance === 'object') {
+    const { r = 1, g = 1, b = 1 } = params.whiteBalance;
+    if (r !== 1 || g !== 1 || b !== 1) {
+      pipeline = pipeline.recomb([
+        [r, 0, 0],
+        [0, g, 0],
+        [0, 0, b],
+      ]);
+    }
+  }
+
+  // Brightness + saturation
+  const brightness = params.brightness != null ? params.brightness : 1.0;
+  const saturation = params.saturation != null ? params.saturation : 1.0;
+  if (brightness !== 1.0 || saturation !== 1.0) {
+    pipeline = pipeline.modulate({ brightness, saturation });
+  }
+
+  // Contrast
+  const contrast = params.contrast != null ? params.contrast : 1.0;
+  if (contrast !== 1.0) {
+    const offset = 128 * (1 - contrast);
+    pipeline = pipeline.linear(contrast, offset);
+  }
+
+  // Sharpening
+  if (params.sharpen && params.sharpen > 0) {
+    pipeline = pipeline.sharpen({
+      sigma: Math.min(params.sharpen, 2.0),
+      flat: 1.5,
+      jagged: 0.5,
+    });
+  }
+
+  // Background whitening
+  if (params.backgroundWhitening && params.backgroundWhitening > 0) {
+    pipeline = await applyBackgroundWhitening(pipeline, params.backgroundWhitening, targetW, targetH);
+  }
+
+  // Output
+  pipeline = pipeline.jpeg({ quality, mozjpeg: true });
+
+  const { data: buffer, info } = await pipeline.toBuffer({ resolveWithObject: true });
+  return { buffer, width: info.width, height: info.height, format: info.format };
+}
+
+/**
+ * Re-processes an already-processed image from its base64 buffer with new options.
+ * Used for applying AI enhancements without re-reading the original file.
+ *
+ * @param {string} base64Buffer - Base64-encoded image data
+ * @param {Object} options - Processing options (same as processImage)
+ * @returns {Promise<{success: boolean, buffer?: string, width?: number, height?: number, format?: string, error?: string}>}
+ */
+async function reprocessFromBuffer(base64Buffer, options = {}) {
+  try {
+    ensureSharp();
+    const buffer = Buffer.from(base64Buffer, 'base64');
+    const result = await applyEnhancementPipeline(buffer, options);
+    return {
+      success: true,
+      buffer: result.buffer.toString('base64'),
+      width: result.width,
+      height: result.height,
+      format: result.format,
+    };
+  } catch (error) {
+    console.error('[ImageProcessor] reprocessFromBuffer error:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================================================
+// Background Whitening
+// ============================================================================
+
+/**
+ * Applies center-protected background whitening using a radial gradient mask.
+ * Lightens and desaturates edge regions while preserving the central face area.
+ *
+ * @param {Object} pipeline - Sharp pipeline instance
+ * @param {number} strength - Whitening intensity 0-1
+ * @param {number} width - Image width
+ * @param {number} height - Image height
+ * @returns {Promise<Object>} - Modified Sharp pipeline
+ */
+async function applyBackgroundWhitening(pipeline, strength, width, height) {
+  if (!strength || strength <= 0) return pipeline;
+
+  try {
+    // Get the current processed buffer from the pipeline
+    const processedBuffer = await pipeline.clone().raw().toBuffer();
+
+    // Create a brightened/desaturated version
+    const brightened = await sharp(processedBuffer, {
+      raw: { width, height, channels: 3 },
+    })
+      .modulate({
+        brightness: 1 + strength * 0.3,
+        saturation: Math.max(0.3, 1 - strength * 0.7),
+      })
+      .raw()
+      .toBuffer();
+
+    // Create radial gradient mask: 0 at center (keep original), 255 at edges (use brightened)
+    const maskData = createRadialGradientMask(width, height);
+
+    // Blend: for each pixel, result = original * (1 - mask/255) + brightened * (mask/255)
+    const blended = blendWithMask(processedBuffer, brightened, maskData, width, height);
+
+    // Return new sharp instance from blended buffer
+    return sharp(Buffer.from(blended), {
+      raw: { width, height, channels: 3 },
+    });
+  } catch (err) {
+    console.warn('[ImageProcessor] Background whitening failed:', err.message);
+    return pipeline;
+  }
+}
+
+/**
+ * Creates a radial gradient mask as a Uint8Array.
+ * Center = 0 (protect), edges = 255 (whiten).
+ *
+ * @param {number} width
+ * @param {number} height
+ * @returns {Uint8Array}
+ */
+function createRadialGradientMask(width, height) {
+  const cx = width / 2;
+  const cy = height * 0.42; // Face is typically slightly above center
+  const maxRadius = Math.sqrt(cx * cx + cy * cy);
+  const data = new Uint8Array(width * height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Normalize to 0-1, with smooth quadratic falloff
+      const t = Math.min(1, dist / (maxRadius * 0.55));
+      const value = Math.round(t * t * 255);
+      data[y * width + x] = value;
+    }
+  }
+
+  return data;
+}
+
+/**
+ * Blends two RGB buffers using a grayscale mask.
+ *
+ * @param {Buffer} original - Original RGB buffer
+ * @param {Buffer} modified - Modified RGB buffer
+ * @param {Uint8Array} mask - Grayscale mask 0-255
+ * @param {number} width
+ * @param {number} height
+ * @returns {Buffer} - Blended RGB buffer
+ */
+function blendWithMask(original, modified, mask, width, height) {
+  const result = Buffer.alloc(width * height * 3);
+
+  for (let i = 0; i < width * height; i++) {
+    const m = mask[i] / 255; // 0 = original, 1 = modified
+    const invM = 1 - m;
+
+    result[i * 3] = Math.round(original[i * 3] * invM + modified[i * 3] * m);
+    result[i * 3 + 1] = Math.round(original[i * 3 + 1] * invM + modified[i * 3 + 1] * m);
+    result[i * 3 + 2] = Math.round(original[i * 3 + 2] * invM + modified[i * 3 + 2] * m);
+  }
+
+  return result;
+}
+
+// ============================================================================
 // Exports
 // ============================================================================
 
@@ -317,6 +537,9 @@ module.exports = {
   getImageInfo,
   generateThumbnail,
   rotateBase64Image,
+  applyEnhancementPipeline,
+  reprocessFromBuffer,
+  createRadialGradientMask,
   TARGET_WIDTH,
   TARGET_HEIGHT,
 };

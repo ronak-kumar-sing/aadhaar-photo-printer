@@ -7,7 +7,7 @@
 /* ──────────────────── State ──────────────────── */
 const appState = {
   photos: [],
-  // Each photo: { id, name, originalPath, thumbnail, processedBuffer, aiAnalysis, fileSize }
+  // Each photo: { id, name, originalPath, thumbnail, processedBuffer, aiAnalysis, fileSize, originalBuffer, enhancementParams }
   settings: {
     shopName: 'Aadhaar Print Shop',
     pricePerPhoto: 10,
@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupPageNavigation();
   setupAadhaarDragResize();
   setupCopiesInput();
+  if (window.AIEditor) AIEditor.init();
   loadRecentPhotos();
   updateFooter();
   updatePhotoSizeDisplay();
@@ -322,6 +323,8 @@ async function handleFilesSelected(files) {
       originalPath: file.path || '',
       thumbnail: null,
       processedBuffer: null,
+      originalBuffer: null,
+      enhancementParams: null,
       aiAnalysis: null,
       fileSize,
     };
@@ -346,6 +349,7 @@ async function handleFilesSelected(files) {
 
       if (result && result.success) {
         photo.processedBuffer = result.buffer || null;
+        photo.originalBuffer = result.buffer || null; // Save original for reset
         if (photo.processedBuffer) {
           photo.thumbnail = `data:image/jpeg;base64,${photo.processedBuffer}`;
           if (api().saveToRecent) {
@@ -361,6 +365,16 @@ async function handleFilesSelected(files) {
 
       PhotoGrid.hideProcessing(id);
       PhotoGrid.updateThumbnail(id, photo.thumbnail, photo.aiAnalysis);
+
+      // ── Auto-enhance after initial processing ──
+      if (window.AIEditor && window.AIEditor.getAutoEnhanceEnabled && photo.processedBuffer) {
+        try {
+          await window.AIEditor.handleAutoEnhance(id);
+        } catch (enhanceErr) {
+          console.warn('Auto-enhance failed for', name, enhanceErr.message);
+          // Non-fatal: photo is still usable without enhancement
+        }
+      }
     } catch (err) {
       console.error('Error processing', name, err);
       UIManager.showToast(`Failed to process ${truncate(name)}`, 'error');
@@ -375,6 +389,7 @@ async function handleFilesSelected(files) {
   refreshPreview();
   updatePrintButton();
   updatePhotoCountBadge();
+  if (window.AIEditor) window.AIEditor.updateButtonState();
 
   UIManager.showToast(`${processed} photo${processed > 1 ? 's' : ''} added`, 'success');
 }
@@ -409,6 +424,10 @@ function handleClearAll() {
   appState.aadhaarBack = null;
   appState.currentPage = 1;
   PhotoGrid.renderPhotoList([]);
+  if (window.AIEditor) {
+    window.AIEditor.clearCache();
+    window.AIEditor.updateButtonState();
+  }
   refreshPreview();
   updatePrintButton();
   updatePhotoCountBadge();
@@ -1192,3 +1211,7 @@ function setupKeyboardShortcuts() {
 window.appState = appState;
 window.handleRemovePhoto = handleRemovePhoto;
 window.handleFilesSelected = handleFilesSelected;
+window.refreshPreview = refreshPreview;
+window.updateProcessingStatus = updateProcessingStatus;
+window.updatePrintButton = updatePrintButton;
+window.updatePhotoCountBadge = updatePhotoCountBadge;

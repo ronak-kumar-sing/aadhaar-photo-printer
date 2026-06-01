@@ -13,11 +13,13 @@ const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 
 // --- Module Imports ---
-const { processImage, processImageFromBuffer, processImages, getImageInfo, generateThumbnail, rotateBase64Image } = require('./imageProcessor');
+const { processImage, processImageFromBuffer, processImages, getImageInfo, generateThumbnail, rotateBase64Image, reprocessFromBuffer } = require('./imageProcessor');
 const { printPhotos, exportToPDF, getPrinters } = require('./printManager');
 const { DataStore } = require('./dataStore');
 const { saveToRecent, getRecentPhotos, backupPhotos, cleanupOldRecent } = require('./fileManager');
 const { GeminiPhotoAnalyzer } = require('./geminiAI');
+const { analyzeForEnhancement, applyEnhancements, applyWhiteBalance, applySharpening, applyBackgroundWhitening } = require('./aiEnhancer');
+const { autoEnhanceOffline, autoWhiteBalanceOffline, autoSharpenOffline, backgroundWhiteningOffline } = require('./offlineEnhancer');
 
 // --- Globals ---
 let mainWindow = null;
@@ -247,6 +249,16 @@ function registerIPCHandlers() {
     }
   });
 
+  ipcMain.handle('image:reprocess', async (_event, base64Buffer, options = {}) => {
+    try {
+      const result = await reprocessFromBuffer(base64Buffer, options);
+      return result;
+    } catch (error) {
+      console.error('[IPC] image:reprocess error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // --------------------------------------------------------------------------
   // Print Operations
   // --------------------------------------------------------------------------
@@ -431,6 +443,98 @@ function registerIPCHandlers() {
     } catch (error) {
       console.error('[IPC] ai:status error:', error);
       return { success: false, configured: false, online: false };
+    }
+  });
+
+  // AI Enhancement Operations
+  ipcMain.handle('ai:enhance', async (_event, filePath) => {
+    try {
+      const result = await analyzeForEnhancement(filePath, geminiAnalyzer);
+      return result;
+    } catch (error) {
+      console.error('[IPC] ai:enhance error:', error);
+      return { available: false, reason: error.message };
+    }
+  });
+
+  ipcMain.handle('ai:whiteBalance', async (_event, filePath) => {
+    try {
+      const fs = require('fs');
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: 'File not found' };
+      }
+      const buffer = fs.readFileSync(filePath);
+      const result = await applyWhiteBalance(buffer);
+      return {
+        success: true,
+        buffer: result.buffer.toString('base64'),
+        width: result.width,
+        height: result.height,
+        format: result.format,
+      };
+    } catch (error) {
+      console.error('[IPC] ai:whiteBalance error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('ai:sharpen', async (_event, filePath) => {
+    try {
+      const fs = require('fs');
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: 'File not found' };
+      }
+      const buffer = fs.readFileSync(filePath);
+      const result = await applySharpening(buffer);
+      return {
+        success: true,
+        buffer: result.buffer.toString('base64'),
+        width: result.width,
+        height: result.height,
+        format: result.format,
+      };
+    } catch (error) {
+      console.error('[IPC] ai:sharpen error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('ai:whitenBg', async (_event, filePath, strength = 0.5) => {
+    try {
+      const fs = require('fs');
+      if (!fs.existsSync(filePath)) {
+        return { success: false, error: 'File not found' };
+      }
+      const buffer = fs.readFileSync(filePath);
+      const result = await applyBackgroundWhitening(buffer, strength);
+      return {
+        success: true,
+        buffer: result.buffer.toString('base64'),
+        width: result.width,
+        height: result.height,
+        format: result.format,
+      };
+    } catch (error) {
+      console.error('[IPC] ai:whitenBg error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('ai:enhanceOffline', async (_event, base64Buffer) => {
+    try {
+      const buffer = Buffer.from(base64Buffer, 'base64');
+      const result = await autoEnhanceOffline(buffer);
+      return {
+        success: true,
+        buffer: result.buffer.toString('base64'),
+        width: result.width,
+        height: result.height,
+        format: result.format,
+        params: result.params,
+      };
+    } catch (error) {
+      console.error('[IPC] ai:enhanceOffline error:', error);
+      return { success: false, error: error.message };
     }
   });
 

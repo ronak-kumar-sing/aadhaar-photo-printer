@@ -61,6 +61,33 @@ Rules:
 - If the image is not a person's photo, set faceVisible to "no" and suitabilityScore to 1
 - Be strict: Aadhaar photos require a plain white/light background, front-facing, neutral expression`;
 
+/**
+ * The enhancement prompt sent to Gemini Vision.
+ * Asks for specific numeric editing parameters for photo enhancement.
+ */
+const ENHANCEMENT_PROMPT = `You are an expert photo editor specializing in passport and ID photo enhancement.
+Analyze the provided photo and respond ONLY with a valid JSON object (no markdown, no code fences) with exactly these fields:
+
+{
+  "brightness": <number 0.7 to 1.3, default 1.0>,
+  "contrast": <number 0.7 to 1.3, default 1.0>,
+  "saturation": <number 0.5 to 1.5, default 1.0>,
+  "sharpen": <number 0 to 2.0, default 0.5>,
+  "whiteBalance": { "r": <number 0.7 to 1.3>, "g": <number 0.7 to 1.3>, "b": <number 0.7 to 1.3> },
+  "backgroundWhitening": <number 0 to 1.0, default 0.0>,
+  "reasoning": "<brief explanation of adjustments>"
+}
+
+Rules for each parameter:
+- brightness: < 1.0 if overexposed/too bright, > 1.0 if underexposed/too dark. 1.0 = no change
+- contrast: > 1.0 for flat/low-contrast photos, < 1.0 for harsh/over-contrasty photos. 1.0 = no change
+- saturation: > 1.0 for dull/gray photos, < 1.0 for oversaturated photos. 1.0 = no change
+- sharpen: higher (> 1.0) for soft/blurry photos, 0 for already sharp photos. Range 0-2.0
+- whiteBalance: RGB multipliers to neutralize color casts. All 1.0 = no cast. > 1.0 = boost channel, < 1.0 = reduce channel
+- backgroundWhitening: > 0 if background is dark, colored, or not plain white. 0.3-0.6 for light backgrounds, 0.7-1.0 for dark/colored backgrounds. 0 = no whitening
+- Be conservative. Small adjustments (±0.1) are better than dramatic changes.
+- For Aadhaar/passport photos: background should be plain white/light, face well-lit, natural skin tones.`;
+
 // ============================================================================
 // GeminiPhotoAnalyzer Class
 // ============================================================================
@@ -212,6 +239,71 @@ class GeminiPhotoAnalyzer {
       }
 
       return { valid: false, error: `Validation failed: ${error.message}` };
+    }
+  }
+
+  /**
+   * Analyzes a photo for optimal editing parameters using Gemini Vision.
+   *
+   * @param {string} filePath - Absolute path to the image file
+   * @returns {Promise<{available: boolean, params?: Object, reasoning?: string, reason?: string}>}
+   */
+  async analyzeEnhancement(filePath) {
+    if (!GoogleGenerativeAI) {
+      return {
+        available: false,
+        reason: 'Gemini AI SDK is not installed.',
+      };
+    }
+
+    if (!this._apiKey) {
+      return {
+        available: false,
+        reason: 'No API key configured.',
+      };
+    }
+
+    if (!this._model) {
+      this._initializeClient();
+    }
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      return {
+        available: false,
+        reason: `Image file not found: ${filePath}`,
+      };
+    }
+
+    try {
+      const imageBuffer = fs.readFileSync(filePath);
+      const base64Image = imageBuffer.toString('base64');
+      const mimeType = getMimeType(filePath);
+
+      const imagePart = {
+        inlineData: {
+          data: base64Image,
+          mimeType,
+        },
+      };
+
+      const result = await withTimeout(
+        this._model.generateContent([ENHANCEMENT_PROMPT, imagePart]),
+        API_TIMEOUT_MS
+      );
+
+      const response = result.response;
+      const text = response.text();
+      const parsed = parseEnhancementResponse(text);
+
+      return {
+        available: true,
+        params: parsed,
+        reasoning: parsed.reasoning || 'AI-enhanced',
+      };
+    } catch (error) {
+      console.error('[GeminiAI] analyzeEnhancement error:', error.message);
+      const reason = classifyError(error);
+      return { available: false, reason };
     }
   }
 
@@ -369,6 +461,67 @@ function getMimeType(filePath) {
     '.tif': 'image/tiff',
   };
   return mimeMap[ext] || 'image/jpeg';
+}
+
+/**
+ * Parses the raw enhancement response from Gemini into structured editing parameters.
+ *
+ * @param {string} text - Raw response text
+ * @returns {Object} - Parsed enhancement parameters
+ */
+function parseEnhancementResponse(text) {
+  const fallback = {
+    brightness: 1.0,
+    contrast: 1.0,
+    saturation: 1.0,
+    sharpen: 0,
+    whiteBalance: { r: 1.0, g: 1.0, b: 1.0 },
+    backgroundWhitening: 0,
+    reasoning: 'Could not parse AI response. Using defaults.',
+  };
+
+  if (!text || typeof text !== 'string') return fallback;
+
+  try {
+    let cleaned = text.trim();
+    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+    const parsed = JSON.parse(cleaned);
+
+    // Clamp and validate all numeric parameters
+    const clamped = {
+      brightness: clamp(parseFloat(parsed.brightness) || 1.0, 0.7, 1.3),
+      contrast: clamp(parseFloat(parsed.contrast) || 1.0, 0.7, 1.3),
+      saturation: clamp(parseFloat(parsed.saturation) || 1.0, 0.5, 1.5),
+      sharpen: clamp(parseFloat(parsed.sharpen) || 0, 0, 2.0),
+      whiteBalance: parseWhiteBalance(parsed.whiteBalance),
+      backgroundWhitening: clamp(parseFloat(parsed.backgroundWhitening) || 0, 0, 1.0),
+      reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : 'AI-enhanced',
+    };
+
+    return clamped;
+  } catch (parseErr) {
+    console.warn('[GeminiAI] Failed to parse enhancement response:', parseErr.message);
+    return fallback;
+  }
+}
+
+/**
+ * Parses and validates white balance multipliers.
+ *
+ * @param {any} wb
+ * @returns {{r: number, g: number, b: number}}
+ */
+function parseWhiteBalance(wb) {
+  if (!wb || typeof wb !== 'object') {
+    return { r: 1.0, g: 1.0, b: 1.0 };
+  }
+
+  return {
+    r: clamp(parseFloat(wb.r) || 1.0, 0.7, 1.3),
+    g: clamp(parseFloat(wb.g) || 1.0, 0.7, 1.3),
+    b: clamp(parseFloat(wb.b) || 1.0, 0.7, 1.3),
+  };
 }
 
 /**

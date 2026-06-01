@@ -50,6 +50,13 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'ai:analyze',
   'ai:setKey',
   'ai:status',
+  'ai:enhance',
+  'ai:whiteBalance',
+  'ai:sharpen',
+  'ai:whitenBg',
+  'ai:enhanceOffline',
+  // Reprocessing
+  'image:reprocess',
   // Utility
   'app:getPath',
 ]);
@@ -282,6 +289,50 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{configured: boolean, online: boolean}>}
    */
   getAiStatus: () => safeInvoke('ai:status'),
+
+  /**
+   * Analyzes a photo and returns AI-guided enhancement parameters.
+   * @param {string} filePath - Path to the photo
+   * @returns {Promise<{available: boolean, params?: Object, offline?: boolean, reason?: string}>}
+   */
+  enhancePhoto: (filePath) => safeInvoke('ai:enhance', filePath),
+
+  /**
+   * Applies white balance correction to a photo.
+   * @param {string} filePath - Path to the photo
+   * @returns {Promise<{success: boolean, buffer?: string, error?: string}>}
+   */
+  whiteBalancePhoto: (filePath) => safeInvoke('ai:whiteBalance', filePath),
+
+  /**
+   * Applies print-optimized sharpening to a photo.
+   * @param {string} filePath - Path to the photo
+   * @returns {Promise<{success: boolean, buffer?: string, error?: string}>}
+   */
+  sharpenPhoto: (filePath) => safeInvoke('ai:sharpen', filePath),
+
+  /**
+   * Applies background whitening to a photo.
+   * @param {string} filePath - Path to the photo
+   * @param {number} [strength=0.5] - Whitening intensity
+   * @returns {Promise<{success: boolean, buffer?: string, error?: string}>}
+   */
+  whitenBackground: (filePath, strength) => safeInvoke('ai:whitenBg', filePath, strength),
+
+  /**
+   * Applies offline auto-enhancement using histogram analysis.
+   * @param {string} base64Buffer - Base64-encoded image
+   * @returns {Promise<{success: boolean, buffer?: string, params?: Object, error?: string}>}
+   */
+  enhancePhotoOffline: (base64Buffer) => safeInvoke('ai:enhanceOffline', base64Buffer),
+
+  /**
+   * Re-processes an image buffer with new options.
+   * @param {string} base64Buffer - Base64-encoded image
+   * @param {Object} options - Processing options
+   * @returns {Promise<{success: boolean, buffer?: string, width?: number, height?: number, error?: string}>}
+   */
+  reprocessImage: (base64Buffer, options) => safeInvoke('image:reprocess', base64Buffer, options),
 
   // --------------------------------------------------------------------------
   // Utility

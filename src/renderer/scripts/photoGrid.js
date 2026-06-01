@@ -222,6 +222,21 @@ const PhotoGrid = (() => {
       card.appendChild(img);
     }
 
+    // AI Enhance button (hover-visible)
+    const enhanceBtn = document.createElement('button');
+    enhanceBtn.className = 'photo-card-enhance';
+    enhanceBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+    enhanceBtn.title = 'AI Enhance this photo';
+    enhanceBtn.setAttribute('aria-label', `Enhance ${photo.name || 'photo'}`);
+    enhanceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.AIEditor) {
+        AIEditor.selectPhoto(photo.id);
+        AIEditor.handleAutoEnhance(photo.id);
+      }
+    });
+    card.appendChild(enhanceBtn);
+
     // Remove button
     const removeBtn = document.createElement('button');
     removeBtn.className = 'photo-card-remove';
@@ -235,6 +250,13 @@ const PhotoGrid = (() => {
       }
     });
     card.appendChild(removeBtn);
+
+    // Click to select
+    card.addEventListener('click', () => {
+      if (window.AIEditor) {
+        AIEditor.selectPhoto(photo.id);
+      }
+    });
 
     // Processing spinner if no thumbnail yet
     if (!photo.thumbnail) {
