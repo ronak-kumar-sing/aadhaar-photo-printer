@@ -7,6 +7,7 @@
  * - Smart crop with face/attention detection
  * - Auto-correct brightness, contrast, and histogram normalization
  * - Thumbnail generation
+ * - Process from Buffer (for drag-and-drop files without path)
  *
  * Sharp is loaded with a fallback for asar-unpacked paths in packaged builds.
  */
@@ -75,13 +76,40 @@ async function processImage(filePath, options = {}) {
   const originalStats = fs.statSync(filePath);
   const originalSize = originalStats.size;
 
+  const buffer = fs.readFileSync(filePath);
+  const result = await processBuffer(buffer, options, originalSize);
+  return result;
+}
+
+/**
+ * Processes an image from a Buffer (for drag-and-drop files without path).
+ *
+ * @param {Buffer} buffer            - Raw image buffer
+ * @param {Object} [options]         - Processing options (same as processImage)
+ * @returns {Promise<{buffer: Buffer, width: number, height: number, format: string, originalSize: number, processedSize: number}>}
+ */
+async function processImageFromBuffer(buffer, options = {}) {
+  ensureSharp();
+
+  if (!Buffer.isBuffer(buffer)) {
+    throw new Error('Invalid buffer provided. Expected a Buffer.');
+  }
+
+  const originalSize = buffer.length;
+  return await processBuffer(buffer, options, originalSize);
+}
+
+/**
+ * Shared processing logic for both file and buffer inputs.
+ */
+async function processBuffer(inputBuffer, options = {}, originalSize = 0) {
   const targetW = options.targetWidth || TARGET_WIDTH;
   const targetH = options.targetHeight || TARGET_HEIGHT;
-  const quality = options.quality || DEFAULT_QUALITY;
+  const quality = options.quality != null ? options.quality : DEFAULT_QUALITY;
   const shouldNormalize = options.normalize !== false; // default true
 
   // Build the Sharp pipeline
-  let pipeline = sharp(filePath)
+  let pipeline = sharp(inputBuffer)
     // Auto-rotate based on EXIF orientation (no args = use EXIF data)
     .rotate()
     // Resize to target with smart crop (attention = focus on interesting regions)
@@ -97,8 +125,9 @@ async function processImage(filePath, options = {}) {
   }
 
   // Apply brightness / saturation adjustments via modulate()
-  const brightness = options.brightness || 1.0;
-  const saturation = options.saturation || 1.0;
+  // Use != null to allow 0 as a valid value
+  const brightness = options.brightness != null ? options.brightness : 1.0;
+  const saturation = options.saturation != null ? options.saturation : 1.0;
   if (brightness !== 1.0 || saturation !== 1.0) {
     pipeline = pipeline.modulate({
       brightness,
@@ -109,7 +138,7 @@ async function processImage(filePath, options = {}) {
   // Apply contrast adjustment via linear()
   // linear(a, b) maps each pixel: output = a * input + b
   // For contrast-only: a = contrast, b = 128 * (1 - contrast) to keep midpoint stable
-  const contrast = options.contrast || 1.0;
+  const contrast = options.contrast != null ? options.contrast : 1.0;
   if (contrast !== 1.0) {
     const offset = 128 * (1 - contrast);
     pipeline = pipeline.linear(contrast, offset);
@@ -283,6 +312,7 @@ async function rotateBase64Image(base64Buffer, angle) {
 
 module.exports = {
   processImage,
+  processImageFromBuffer,
   processImages,
   getImageInfo,
   generateThumbnail,

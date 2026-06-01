@@ -28,7 +28,7 @@ const ReceiptManager = (() => {
 
     card.innerHTML = `
       <div class="receipt-shop-name">${escapeHTML(shopName)}</div>
-      <div style="text-align:center;font-size:var(--font-size-sm);color:#666;">
+      <div style="text-align:center;font-size:var(--font-size-sm);color:var(--text-tertiary);">
         Date: ${formattedDate} &nbsp; ${formattedTime}
       </div>
 

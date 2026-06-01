@@ -7,8 +7,7 @@
  * - Supports dynamic grid layouts (custom cols × rows)
  * - Supports Aadhaar Card mode (front + back, absolute positioning)
  * - Optional cut guides for easy trimming
- * - Half-page printing support
- * - Supports native system printing and PDF export
+ * - Uses temp files instead of data URLs to avoid size limits
  */
 
 'use strict';
@@ -16,6 +15,7 @@
 const { BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 // ============================================================================
 // Constants — A4 & Photo Dimensions (mm)
@@ -27,6 +27,10 @@ const GAP_MM = 3;
 const MARGIN_MM = 10;
 const USABLE_WIDTH_MM = A4_WIDTH_MM - 2 * MARGIN_MM;   // 190mm
 const USABLE_HEIGHT_MM = A4_HEIGHT_MM - 2 * MARGIN_MM;  // 277mm
+
+// Standard Indian passport / Aadhaar photo size
+const PASSPORT_WIDTH_MM = 35;
+const PASSPORT_HEIGHT_MM = 45;
 
 // ============================================================================
 // Public API
@@ -44,10 +48,12 @@ async function printPhotos(mainWindow, photos, options = {}) {
   const pagesCount = options.layoutMode === 'aadhaar-card' ? 1 : calculatePageCount(photos.length, options);
 
   let printWindow = null;
+  let tempFile = null;
 
   try {
+    tempFile = await writeTempHTML(html);
     printWindow = createHiddenPrintWindow(mainWindow);
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    await printWindow.loadURL(`file://${tempFile}`);
     await waitForImagesLoaded(printWindow);
 
     const printSettings = {
@@ -90,6 +96,9 @@ async function printPhotos(mainWindow, photos, options = {}) {
     if (printWindow && !printWindow.isDestroyed()) {
       printWindow.close();
     }
+    if (tempFile) {
+      cleanupTempFile(tempFile);
+    }
   }
 }
 
@@ -106,10 +115,12 @@ async function exportToPDF(mainWindow, photos, outputPath, options = {}) {
 
   const html = generatePrintHTML(photos, options);
   let printWindow = null;
+  let tempFile = null;
 
   try {
+    tempFile = await writeTempHTML(html);
     printWindow = createHiddenPrintWindow(mainWindow);
-    await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    await printWindow.loadURL(`file://${tempFile}`);
     await waitForImagesLoaded(printWindow);
 
     const pdfBuffer = await printWindow.webContents.printToPDF({
@@ -135,6 +146,9 @@ async function exportToPDF(mainWindow, photos, outputPath, options = {}) {
   } finally {
     if (printWindow && !printWindow.isDestroyed()) {
       printWindow.close();
+    }
+    if (tempFile) {
+      cleanupTempFile(tempFile);
     }
   }
 }
@@ -163,6 +177,30 @@ async function getPrinters(mainWindow) {
 }
 
 // ============================================================================
+// Temp File Helpers
+// ============================================================================
+
+async function writeTempHTML(html) {
+  const tmpDir = path.join(os.tmpdir(), 'aadhaar-photo-printer');
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  }
+  const tmpFile = path.join(tmpDir, `print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
+  fs.writeFileSync(tmpFile, html, 'utf-8');
+  return tmpFile;
+}
+
+function cleanupTempFile(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    // Non-critical cleanup failure
+  }
+}
+
+// ============================================================================
 // HTML Generation
 // ============================================================================
 
@@ -182,21 +220,24 @@ function generateGridHTML(photos, options = {}) {
     rows = parseInt(match[2], 10);
   }
 
-  const halfPage = options.halfPage || false;
   const showCutGuides = options.showCutGuides || false;
 
-  const usableHeight = halfPage ? USABLE_HEIGHT_MM / 2 : USABLE_HEIGHT_MM;
-  const photosPerPage = cols * rows;
+  // Use actual passport photo size (35mm x 45mm)
+  const photoW = PASSPORT_WIDTH_MM;
+  const photoH = PASSPORT_HEIGHT_MM;
 
-  // Calculate photo dimensions to fill the usable area
-  const photoW = (USABLE_WIDTH_MM - (cols - 1) * GAP_MM) / cols;
-  const photoH = (usableHeight - (rows - 1) * GAP_MM) / rows;
+  // Calculate how many photos fit per page
+  const maxCols = Math.floor((USABLE_WIDTH_MM + GAP_MM) / (photoW + GAP_MM));
+  const maxRows = Math.floor((USABLE_HEIGHT_MM + GAP_MM) / (photoH + GAP_MM));
+  const effectiveCols = Math.min(cols, maxCols);
+  const effectiveRows = Math.min(rows, maxRows);
+  const photosPerPage = effectiveCols * effectiveRows;
 
-  // Center the grid
-  const gridWidth = cols * photoW + (cols - 1) * GAP_MM;
-  const gridHeight = rows * photoH + (rows - 1) * GAP_MM;
+  // Center the grid on the page
+  const gridWidth = effectiveCols * photoW + (effectiveCols - 1) * GAP_MM;
+  const gridHeight = effectiveRows * photoH + (effectiveRows - 1) * GAP_MM;
   const offsetX = (USABLE_WIDTH_MM - gridWidth) / 2;
-  const offsetY = (usableHeight - gridHeight) / 2;
+  const offsetY = (USABLE_HEIGHT_MM - gridHeight) / 2;
 
   // Split into pages
   const pages = [];
@@ -208,12 +249,12 @@ function generateGridHTML(photos, options = {}) {
   const pagesHTML = pages.map((pagePhotos, pageIndex) => {
     const photoSlots = [];
 
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const photoIdx = row * cols + col;
+    for (let row = 0; row < effectiveRows; row++) {
+      for (let col = 0; col < effectiveCols; col++) {
+        const photoIdx = row * effectiveCols + col;
         const photo = pagePhotos[photoIdx];
 
-        if (photo) {
+        if (photo && photo.buffer && photo.buffer.length > 0) {
           const x = offsetX + col * (photoW + GAP_MM);
           const y = offsetY + row * (photoH + GAP_MM);
           photoSlots.push(`
@@ -225,17 +266,17 @@ function generateGridHTML(photos, options = {}) {
       }
     }
 
-    const cutGuidesHTML = showCutGuides ? generateCutGuides(cols, rows, offsetX, offsetY, photoW, photoH) : '';
+    const cutGuidesHTML = showCutGuides ? generateCutGuides(effectiveCols, effectiveRows, offsetX, offsetY, photoW, photoH) : '';
 
     return `
-      <div class="page ${pageIndex > 0 ? 'page-break' : ''}" style="height: ${usableHeight}mm;">
+      <div class="page ${pageIndex > 0 ? 'page-break' : ''}">
         ${photoSlots.join('')}
         ${cutGuidesHTML}
       </div>
     `;
   }).join('');
 
-  return buildDocument(pagesHTML, halfPage ? usableHeight : USABLE_HEIGHT_MM);
+  return buildDocument(pagesHTML, USABLE_HEIGHT_MM, false);
 }
 
 function generateAadhaarCardHTML(photos, options = {}) {
@@ -249,7 +290,7 @@ function generateAadhaarCardHTML(photos, options = {}) {
 
   const slots = [];
 
-  if (frontPhoto) {
+  if (frontPhoto && frontPhoto.buffer && frontPhoto.buffer.length > 0) {
     const pos = positions.front;
     const x = (pos.xPct / 100) * USABLE_WIDTH_MM;
     const y = (pos.yPct / 100) * USABLE_HEIGHT_MM;
@@ -262,7 +303,7 @@ function generateAadhaarCardHTML(photos, options = {}) {
     `);
   }
 
-  if (backPhoto) {
+  if (backPhoto && backPhoto.buffer && backPhoto.buffer.length > 0) {
     const pos = positions.back;
     const x = (pos.xPct / 100) * USABLE_WIDTH_MM;
     const y = (pos.yPct / 100) * USABLE_HEIGHT_MM;
@@ -276,15 +317,16 @@ function generateAadhaarCardHTML(photos, options = {}) {
   }
 
   const pagesHTML = `
-    <div class="page" style="height: ${USABLE_HEIGHT_MM}mm;">
+    <div class="page">
       ${slots.join('')}
     </div>
   `;
 
-  return buildDocument(pagesHTML, USABLE_HEIGHT_MM);
+  return buildDocument(pagesHTML, USABLE_HEIGHT_MM, true);
 }
 
-function buildDocument(pagesHTML, usableHeightMM) {
+function buildDocument(pagesHTML, usableHeightMM, isAadhaarCard = false) {
+  const imgFit = isAadhaarCard ? 'contain' : 'cover';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -311,10 +353,11 @@ function buildDocument(pagesHTML, usableHeightMM) {
     .photo-cell {
       position: absolute;
       overflow: hidden;
+      border: 0.3px solid rgba(0,0,0,0.08);
     }
     .photo-cell img {
       width: 100%; height: 100%;
-      object-fit: cover;
+      object-fit: ${imgFit};
       display: block;
     }
     .cut-guide {
@@ -359,7 +402,7 @@ function createHiddenPrintWindow(parent) {
 }
 
 async function waitForImagesLoaded(win) {
-  await delay(300);
+  await delay(500);
   try {
     await win.webContents.executeJavaScript(`
       new Promise((resolve) => {
@@ -372,12 +415,12 @@ async function waitForImagesLoaded(win) {
           if (img.complete && img.naturalHeight > 0) { onLoad(); }
           else { img.addEventListener('load', onLoad); img.addEventListener('error', onLoad); }
         });
-        setTimeout(resolve, 5000);
+        setTimeout(resolve, 8000);
       });
     `);
   } catch (err) {
     console.warn('[PrintManager] Image load check failed, proceeding with delay:', err.message);
-    await delay(1000);
+    await delay(1500);
   }
 }
 
@@ -402,7 +445,12 @@ function calculatePageCount(photoCount, options = {}) {
     cols = parseInt(match[1], 10);
     rows = parseInt(match[2], 10);
   }
-  const perPage = cols * rows;
+  // Use actual passport size to determine effective grid
+  const maxCols = Math.floor((USABLE_WIDTH_MM + GAP_MM) / (PASSPORT_WIDTH_MM + GAP_MM));
+  const maxRows = Math.floor((USABLE_HEIGHT_MM + GAP_MM) / (PASSPORT_HEIGHT_MM + GAP_MM));
+  const effectiveCols = Math.min(cols, maxCols);
+  const effectiveRows = Math.min(rows, maxRows);
+  const perPage = effectiveCols * effectiveRows;
   return Math.ceil(photoCount / perPage);
 }
 

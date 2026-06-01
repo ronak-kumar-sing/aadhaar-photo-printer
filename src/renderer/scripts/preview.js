@@ -41,9 +41,11 @@ const PagePreview = (() => {
 
     previewEl.classList.remove('aadhaar-card-mode');
     previewEl.setAttribute('data-layout', `${cols}x${rows}`);
+
+    // Use CSS Grid but with fixed aspect-ratio cells
+    previewEl.style.display = 'grid';
     previewEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
     previewEl.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-    previewEl.style.display = 'grid';
 
     // Clear existing cells
     previewEl.innerHTML = '';
@@ -62,7 +64,6 @@ const PagePreview = (() => {
         img.alt = pagePhotos[i].name || 'Photo';
         img.draggable = false;
 
-        cell.style.animationDelay = `${i * 50}ms`;
         cell.appendChild(img);
       } else if (i < pagePhotos.length) {
         cell.innerHTML = '<div class="photo-card-spinner" style="width:18px;height:18px;"></div>';

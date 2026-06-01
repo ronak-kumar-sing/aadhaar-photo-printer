@@ -25,6 +25,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'dialog:save',
   // Image processing
   'image:process',
+  'image:processBuffer',
   'image:processBatch',
   'image:info',
   'image:rotate',
@@ -120,6 +121,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, buffer?: string, width?: number, height?: number, error?: string}>}
    */
   processImage: (filePath, options) => safeInvoke('image:process', filePath, options),
+
+  /**
+   * Processes an image from a base64 buffer (for drag-and-drop without file path).
+   * @param {string} base64Data - Base64-encoded image data
+   * @param {Object} [options] - Processing options
+   * @returns {Promise<{success: boolean, buffer?: string, width?: number, height?: number, error?: string}>}
+   */
+  processImageFromBuffer: (base64Data, options) => safeInvoke('image:processBuffer', base64Data, options),
 
   /**
    * Processes multiple images in batch with progress reporting.

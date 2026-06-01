@@ -150,7 +150,8 @@ class DataStore {
   incrementPrintCount(count = 1) {
     const today = this._todayKey();
     const current = this._data.dailyCounts[today] || 0;
-    this._data.dailyCounts[today] = current + Math.max(0, count);
+    const numCount = typeof count === 'number' && !isNaN(count) ? count : parseInt(count, 10) || 0;
+    this._data.dailyCounts[today] = current + Math.max(0, numCount);
 
     // Prune old daily counts (keep last 90 days to avoid unbounded growth)
     this._pruneOldDailyCounts(90);
@@ -270,7 +271,7 @@ class DataStore {
         const parsed = JSON.parse(raw);
 
         // Deep-merge with defaults so newly added keys get their defaults
-        this._data = { ...DEFAULTS, ...parsed };
+        this._data = deepMerge(DEFAULTS, parsed);
 
         // Ensure arrays are actually arrays (handle corrupt data)
         if (!Array.isArray(this._data.customers)) this._data.customers = [];
@@ -280,7 +281,7 @@ class DataStore {
         }
       } else {
         // First launch — start with defaults
-        this._data = { ...DEFAULTS, customers: [], recentPhotos: [], dailyCounts: {} };
+        this._data = deepMerge(DEFAULTS, { customers: [], recentPhotos: [], dailyCounts: {} });
         this._save();
       }
     } catch (error) {
@@ -347,7 +348,30 @@ class DataStore {
 }
 
 // ============================================================================
+// Deep Merge Helper
+// ============================================================================
+
+/**
+ * Deep-merges source into target. Arrays are replaced, objects are merged.
+ * @param {Object} target
+ * @param {Object} source
+ * @returns {Object}
+ */
+function deepMerge(target, source) {
+  const output = { ...target };
+  for (const key of Object.keys(source)) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      output[key] = deepMerge(target[key] || {}, source[key]);
+    } else {
+      output[key] = source[key];
+    }
+  }
+  return output;
+}
+
+// ============================================================================
 // Exports
 // ============================================================================
 
 module.exports = { DataStore };
+

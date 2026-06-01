@@ -1495,3 +1495,21 @@
   flex-wrap: wrap;
   gap: var(--space-sm) var(--space-md);
 }
+
+/* ──── Copies section ──── */
+#copies-section .form-group {
+  margin-bottom: 0;
+}
+
+#copies-section .form-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
+}
+
+#copies-section .form-input {
+  height: 40px;
+  text-align: center;
+  font-weight: 700;
+}

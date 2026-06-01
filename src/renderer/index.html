@@ -178,7 +178,6 @@
         <div id="a4-preview" class="a4-preview" aria-label="A4 page preview showing photo placement">
           <!-- Photo cells will be injected by preview.js -->
         </div>
-        <div id="half-page-guide" class="half-page-guide" hidden></div>
       </div>
 
       <!-- Page Indicator -->
@@ -232,6 +231,15 @@
         </div>
       </div>
 
+      <!-- Copies Control -->
+      <div class="panel-section" id="copies-section">
+        <h3 class="panel-sub-heading">How Many Photos?</h3>
+        <div class="form-group">
+          <label for="input-copies" class="form-label">Copies per photo</label>
+          <input id="input-copies" class="form-input" type="number" min="1" max="100" value="1">
+        </div>
+      </div>
+
       <!-- Print Options -->
       <div class="panel-section">
         <h3 class="panel-sub-heading">Print Options</h3>
@@ -239,11 +247,6 @@
           <input type="checkbox" id="chk-cut-guides" class="toggle-input">
           <span class="toggle-slider"></span>
           <span class="toggle-label">Show cut guides</span>
-        </label>
-        <label class="toggle-row">
-          <input type="checkbox" id="chk-half-page" class="toggle-input">
-          <span class="toggle-slider"></span>
-          <span class="toggle-label">Print on top half only</span>
         </label>
       </div>
 

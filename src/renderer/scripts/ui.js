@@ -140,6 +140,12 @@ const UIManager = (() => {
   function showModal(modalId) {
     const modal = document.getElementById(modalId);
     if (!modal) return;
+
+    // Remove any existing listener to prevent leaks
+    if (modal._overlayClick) {
+      modal.removeEventListener('click', modal._overlayClick);
+    }
+
     modal.hidden = false;
     modal.classList.remove('hiding');
 
