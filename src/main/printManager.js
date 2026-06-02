@@ -222,9 +222,9 @@ function generateGridHTML(photos, options = {}) {
 
   const showCutGuides = options.showCutGuides || false;
 
-  // Use actual passport photo size (35mm x 45mm)
-  const photoW = PASSPORT_WIDTH_MM;
-  const photoH = PASSPORT_HEIGHT_MM;
+  // Use dynamic photo dimensions from options, fallback to passport size
+  const photoW = options.photoWidthMM || PASSPORT_WIDTH_MM;
+  const photoH = options.photoHeightMM || PASSPORT_HEIGHT_MM;
 
   // Calculate how many photos fit per page
   const maxCols = Math.floor((USABLE_WIDTH_MM + GAP_MM) / (photoW + GAP_MM));
@@ -445,19 +445,15 @@ function calculatePageCount(photoCount, options = {}) {
     cols = parseInt(match[1], 10);
     rows = parseInt(match[2], 10);
   }
-  // Use actual passport size to determine effective grid
-  const maxCols = Math.floor((USABLE_WIDTH_MM + GAP_MM) / (PASSPORT_WIDTH_MM + GAP_MM));
-  const maxRows = Math.floor((USABLE_HEIGHT_MM + GAP_MM) / (PASSPORT_HEIGHT_MM + GAP_MM));
+  // Use dynamic photo dimensions from options
+  const photoW = options.photoWidthMM || PASSPORT_WIDTH_MM;
+  const photoH = options.photoHeightMM || PASSPORT_HEIGHT_MM;
+  const maxCols = Math.floor((USABLE_WIDTH_MM + GAP_MM) / (photoW + GAP_MM));
+  const maxRows = Math.floor((USABLE_HEIGHT_MM + GAP_MM) / (photoH + GAP_MM));
   const effectiveCols = Math.min(cols, maxCols);
   const effectiveRows = Math.min(rows, maxRows);
   const perPage = effectiveCols * effectiveRows;
   return Math.ceil(photoCount / perPage);
-}
-
-function estimateInkUsage(photoCount) {
-  if (photoCount <= 4) return 'Low';
-  if (photoCount <= 12) return 'Medium';
-  return 'High';
 }
 
 function escapeHTML(str) {
@@ -498,5 +494,4 @@ module.exports = {
   exportToPDF,
   getPrinters,
   generatePrintHTML,
-  estimateInkUsage,
 };

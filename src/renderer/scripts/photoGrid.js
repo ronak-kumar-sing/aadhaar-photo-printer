@@ -172,36 +172,24 @@ const PhotoGrid = (() => {
 
   function handleRecentClick(item) {
     // Re-add to current session — dispatch through app.js
-    if (typeof window.handleFilesSelected === 'function') {
-      if (item.path) {
-        // If we have a file path, create a File object with that path
-        fetch(item.thumbnail)
-          .then((r) => r.blob())
-          .then((blob) => {
-            const file = new File([blob], item.name || 'recent.jpg', { type: blob.type });
-            Object.defineProperty(file, 'path', {
-              value: item.path,
-              writable: true,
-              enumerable: true,
-              configurable: true
-            });
-            window.handleFilesSelected([file]);
-          })
-          .catch(() => {
-            if (window.UIManager) UIManager.showToast('Could not load recent photo', 'error');
-          });
-      } else {
-        // Fallback: just use the thumbnail data URL
-        fetch(item.thumbnail)
-          .then((r) => r.blob())
-          .then((blob) => {
-            const file = new File([blob], item.name || 'recent.jpg', { type: blob.type });
-            window.handleFilesSelected([file]);
-          })
-          .catch(() => {
-            if (window.UIManager) UIManager.showToast('Could not load recent photo', 'error');
-          });
-      }
+    if (typeof window.handleFilesSelected !== 'function') return;
+
+    if (item.path) {
+      // Pass a minimal file-like object with the original path.
+      // app.js checks file.path first and calls processImage(file.path) directly.
+      const fakeFile = { path: item.path, name: item.name || 'recent.jpg', size: item.size || 0 };
+      window.handleFilesSelected([fakeFile]);
+    } else if (item.thumbnail) {
+      // Fallback: fetch thumbnail blob and create File from it
+      fetch(item.thumbnail)
+        .then((r) => r.blob())
+        .then((blob) => {
+          const file = new File([blob], item.name || 'recent.jpg', { type: blob.type });
+          window.handleFilesSelected([file]);
+        })
+        .catch(() => {
+          if (window.UIManager) UIManager.showToast('Could not load recent photo', 'error');
+        });
     }
   }
 

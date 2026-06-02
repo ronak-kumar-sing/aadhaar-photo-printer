@@ -9,22 +9,26 @@
 
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, Tray } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // --- Module Imports ---
-const { processImage, processImageFromBuffer, processImages, getImageInfo, generateThumbnail, rotateBase64Image, reprocessFromBuffer } = require('./imageProcessor');
+const { processImage, processImageFromBuffer, processImages, getImageInfo, rotateBase64Image, reprocessFromBuffer } = require('./imageProcessor');
 const { printPhotos, exportToPDF, getPrinters } = require('./printManager');
 const { DataStore } = require('./dataStore');
 const { saveToRecent, getRecentPhotos, backupPhotos, cleanupOldRecent } = require('./fileManager');
 const { GeminiPhotoAnalyzer } = require('./geminiAI');
 const { analyzeForEnhancement, applyEnhancements, applyWhiteBalance, applySharpening, applyBackgroundWhitening } = require('./aiEnhancer');
 const { autoEnhanceOffline, autoWhiteBalanceOffline, autoSharpenOffline, backgroundWhiteningOffline } = require('./offlineEnhancer');
+const { Logger } = require('./logger');
 
 // --- Globals ---
 let mainWindow = null;
 let dataStore = null;
 let geminiAnalyzer = null;
+let tray = null;
+let logger = null;
 
 // ============================================================================
 // Single Instance Lock
@@ -68,7 +72,7 @@ function createMainWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: 'Aadhaar Photo Printer',
-    icon: path.join(__dirname, '..', 'renderer', 'assets', 'icon.png'),
+    icon: path.join(__dirname, '..', '..', 'resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     show: false, // Show after ready-to-show to avoid visual flash
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -303,7 +307,7 @@ function registerIPCHandlers() {
       return { success: true, photos };
     } catch (error) {
       console.error('[IPC] file:getRecent error:', error);
-      return { success: true, photos: [] };
+      return { success: false, photos: [], error: error.message };
     }
   });
 
@@ -360,7 +364,7 @@ function registerIPCHandlers() {
       return { success: true, count };
     } catch (error) {
       console.error('[IPC] store:getDailyCount error:', error);
-      return { success: true, count: 0 };
+      return { success: false, count: 0, error: error.message };
     }
   });
 
@@ -394,7 +398,7 @@ function registerIPCHandlers() {
       return { success: true, customers };
     } catch (error) {
       console.error('[IPC] customer:getRecent error:', error);
-      return { success: true, customers: [] };
+      return { success: false, customers: [], error: error.message };
     }
   });
 
@@ -404,7 +408,7 @@ function registerIPCHandlers() {
       return { success: true, customers };
     } catch (error) {
       console.error('[IPC] customer:search error:', error);
-      return { success: true, customers: [] };
+      return { success: false, customers: [], error: error.message };
     }
   });
 
@@ -459,7 +463,6 @@ function registerIPCHandlers() {
 
   ipcMain.handle('ai:whiteBalance', async (_event, filePath) => {
     try {
-      const fs = require('fs');
       if (!fs.existsSync(filePath)) {
         return { success: false, error: 'File not found' };
       }
@@ -480,7 +483,6 @@ function registerIPCHandlers() {
 
   ipcMain.handle('ai:sharpen', async (_event, filePath) => {
     try {
-      const fs = require('fs');
       if (!fs.existsSync(filePath)) {
         return { success: false, error: 'File not found' };
       }
@@ -501,7 +503,6 @@ function registerIPCHandlers() {
 
   ipcMain.handle('ai:whitenBg', async (_event, filePath, strength = 0.5) => {
     try {
-      const fs = require('fs');
       if (!fs.existsSync(filePath)) {
         return { success: false, error: 'File not found' };
       }
@@ -552,10 +553,74 @@ function registerIPCHandlers() {
         appPath: app.getAppPath(),
       };
     } catch (error) {
-      console.error('[IPC] app:getPath error:', error);
+      logger.error(`[IPC] app:getPath error: ${error.message}`);
       return { success: false, error: error.message };
     }
   });
+
+  ipcMain.handle('app:about', async () => {
+    try {
+      return {
+        success: true,
+        name: app.getName(),
+        version: app.getVersion(),
+        electronVersion: process.versions.electron,
+        nodeVersion: process.versions.node,
+      };
+    } catch (error) {
+      logger.error(`[IPC] app:about error: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  });
+}
+
+// ============================================================================
+// System Tray
+// ============================================================================
+
+function createTray() {
+  const iconPath = path.join(__dirname, '..', '..', 'resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+  if (!fs.existsSync(iconPath)) {
+    logger.warn(`[Tray] Icon not found at ${iconPath}, skipping tray creation.`);
+    return;
+  }
+
+  tray = new Tray(iconPath);
+  tray.setToolTip('Aadhaar Photo Printer');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show',
+      click: () => {
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.focus();
+      } else {
+        mainWindow.show();
+      }
+    }
+  });
+
+  logger.info('[Tray] System tray icon created.');
 }
 
 // ============================================================================
@@ -563,6 +628,10 @@ function registerIPCHandlers() {
 // ============================================================================
 
 app.whenReady().then(() => {
+  // Initialize structured logger
+  logger = new Logger();
+  logger.info('[Main] Application starting...');
+
   // Initialize data store
   dataStore = new DataStore(app.getPath('userData'));
 
@@ -576,9 +645,12 @@ app.whenReady().then(() => {
   // Create the main window
   createMainWindow();
 
+  // Create system tray icon
+  createTray();
+
   // Periodic cleanup of old recent files (run once at startup)
   cleanupOldRecent(30).catch((err) => {
-    console.warn('[Main] Cleanup of old recent photos failed:', err.message);
+    logger.warn(`[Main] Cleanup of old recent photos failed: ${err.message}`);
   });
 });
 
@@ -598,12 +670,12 @@ app.on('activate', () => {
 
 // Graceful shutdown
 app.on('before-quit', () => {
-  console.log('[Main] Application shutting down...');
+  if (logger) logger.info('[Main] Application shutting down...');
 });
 
 // Handle uncaught errors to prevent silent crashes
 process.on('uncaughtException', (error) => {
-  console.error('[Main] Uncaught exception:', error);
+  if (logger) logger.error(`[Main] Uncaught exception: ${error.stack || error.message}`);
   dialog.showErrorBox(
     'Unexpected Error',
     `An unexpected error occurred:\n\n${error.message}\n\nThe application will continue running, but you may want to restart it.`
@@ -611,5 +683,5 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[Main] Unhandled promise rejection:', reason);
+  if (logger) logger.error(`[Main] Unhandled promise rejection: ${reason}`);
 });

@@ -59,6 +59,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'image:reprocess',
   // Utility
   'app:getPath',
+  'app:about',
 ]);
 
 /**
@@ -357,4 +358,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, userData: string, documents: string, temp: string, appPath: string}>}
    */
   getAppPath: () => safeInvoke('app:getPath'),
+
+  /**
+   * Retrieves application version info for the About dialog.
+   * @returns {Promise<{success: boolean, name: string, version: string, electronVersion: string, nodeVersion: string}>}
+   */
+  getAboutInfo: () => safeInvoke('app:about'),
 });

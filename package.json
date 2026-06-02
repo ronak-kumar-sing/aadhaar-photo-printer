@@ -1,7 +1,7 @@
 {
   "name": "aadhaar-photo-printer",
   "version": "1.0.0",
-  "description": "Simple Aadhaar card photo printer for print shops",
+  "description": "Professional Aadhaar & Passport photo printing solution for photo studios",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -13,13 +13,16 @@
   "license": "MIT",
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
-    "electron-store": "^10.0.0",
     "sharp": "^0.33.5"
   },
   "devDependencies": {
     "electron": "^33.4.0",
-    "electron-builder": "^25.1.8",
-    "playwright": "^1.60.0"
+    "electron-builder": "^25.1.8"
+  },
+  "homepage": "https://github.com/ronak-kumar-sing/aadhaar-photo-printer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ronak-kumar-sing/aadhaar-photo-printer.git"
   },
   "build": {
     "appId": "com.aadhaar.photoprinter",
@@ -39,13 +42,13 @@
           ]
         }
       ],
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "resources/icon.png",
-      "uninstallerIcon": "resources/icon.png"
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico"
     },
     "asar": true,
     "asarUnpack": [

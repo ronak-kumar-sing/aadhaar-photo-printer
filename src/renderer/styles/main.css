@@ -490,3 +490,60 @@ a { color: var(--primary-500); text-decoration: none; }
 #a4-preview-wrapper {
   position: relative;
 }
+
+/* ───────────────── Splash Overlay ───────────────── */
+.splash-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-primary, #fff);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.4s ease;
+}
+.splash-overlay.hiding {
+  opacity: 0;
+  pointer-events: none;
+}
+.splash-content {
+  text-align: center;
+}
+.splash-text {
+  margin-top: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary, #111);
+}
+.splash-spinner {
+  margin: 16px auto 0;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border-color, #ddd);
+  border-top-color: var(--primary-500, #1565C0);
+  border-radius: 50%;
+  animation: splash-spin 0.8s linear infinite;
+}
+@keyframes splash-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ───────────────── About Modal ───────────────── */
+.about-content {
+  padding: 8px 0;
+  text-align: center;
+  color: var(--text-secondary, #555);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.about-content .about-version {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #111);
+  margin-bottom: 8px;
+}
+.about-content .about-detail {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-tertiary, #888);
+}

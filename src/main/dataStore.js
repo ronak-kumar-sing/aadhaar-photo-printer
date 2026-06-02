@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { safeStorage } = require('electron');
 
 // ============================================================================
 // Default Settings
@@ -35,6 +36,8 @@ const DEFAULTS = {
   showCutGuides: false,
   halfPage: false,
   printerName: '',
+  copies: 1,
+  photoSizeId: 'passport',
   aadhaarCardPositions: {
     front: { xPct: 15, yPct: 10, wPct: 40, hPct: 25 },
     back:  { xPct: 15, yPct: 55, wPct: 40, hPct: 25 },
@@ -83,13 +86,24 @@ class DataStore {
    * @returns {Object} - Full settings object
    */
   getSettings() {
+    // Decrypt API key if it was stored encrypted
+    let apiKey = this._data.geminiApiKey || '';
+    if (this._data._apiKeyEncrypted && apiKey && safeStorage.isEncryptionAvailable()) {
+      try {
+        apiKey = safeStorage.decryptString(Buffer.from(apiKey, 'base64'));
+      } catch (e) {
+        console.warn('[DataStore] Failed to decrypt API key:', e.message);
+        apiKey = '';
+      }
+    }
+
     return {
       shopName: this._data.shopName,
       pricePerPhoto: this._data.pricePerPhoto,
       defaultQuality: this._data.defaultQuality,
       darkMode: this._data.darkMode,
       language: this._data.language,
-      geminiApiKey: this._data.geminiApiKey,
+      geminiApiKey: apiKey,
       defaultLayout: this._data.defaultLayout,
       layoutMode: this._data.layoutMode,
       layoutCols: this._data.layoutCols,
@@ -97,6 +111,8 @@ class DataStore {
       showCutGuides: this._data.showCutGuides,
       halfPage: this._data.halfPage,
       printerName: this._data.printerName,
+      copies: this._data.copies,
+      photoSizeId: this._data.photoSizeId,
       aadhaarCardPositions: this._data.aadhaarCardPositions,
     };
   }
@@ -114,12 +130,26 @@ class DataStore {
       'shopName', 'pricePerPhoto', 'defaultQuality',
       'darkMode', 'language', 'geminiApiKey', 'defaultLayout',
       'layoutMode', 'layoutCols', 'layoutRows',
-      'showCutGuides', 'halfPage', 'printerName',
+      'showCutGuides', 'halfPage', 'printerName', 'copies',
+      'photoSizeId',
       'aadhaarCardPositions',
     ];
 
     for (const key of allowedKeys) {
       if (key in partial) {
+        // Encrypt API key before storing
+        if (key === 'geminiApiKey' && partial.geminiApiKey && safeStorage.isEncryptionAvailable()) {
+          try {
+            const encrypted = safeStorage.encryptString(partial.geminiApiKey);
+            this._data.geminiApiKey = encrypted.toString('base64');
+            this._data._apiKeyEncrypted = true;
+          } catch (e) {
+            console.warn('[DataStore] Failed to encrypt API key:', e.message);
+            this._data.geminiApiKey = partial.geminiApiKey;
+            this._data._apiKeyEncrypted = false;
+          }
+          continue;
+        }
         this._data[key] = partial[key];
       }
     }

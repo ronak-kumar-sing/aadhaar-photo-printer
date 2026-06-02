@@ -4,6 +4,20 @@
 
 'use strict';
 
+/* ──────────────────── Photo Size Presets ──────────────────── */
+const PHOTO_SIZE_PRESETS = [
+  { id: 'passport',      name: 'Passport (35×45 mm)',   mmW: 35,  mmH: 45,  pxW: 413,  pxH: 531 },
+  { id: 'passport_us',   name: 'Passport US (50×50 mm)', mmW: 50,  mmH: 50,  pxW: 591,  pxH: 591 },
+  { id: 'visa_schengen', name: 'Visa Schengen (35×45)',  mmW: 35,  mmH: 45,  pxW: 413,  pxH: 531 },
+  { id: 'pan_card',      name: 'PAN Card (25×35 mm)',    mmW: 25,  mmH: 35,  pxW: 295,  pxH: 413 },
+  { id: 'stamp',         name: 'Stamp (20×25 mm)',       mmW: 20,  mmH: 25,  pxW: 236,  pxH: 295 },
+  { id: 'id_card',       name: 'ID Card (35×45 mm)',     mmW: 35,  mmH: 45,  pxW: 413,  pxH: 531 },
+  { id: 'wallet',        name: 'Wallet (63×88 mm)',      mmW: 63,  mmH: 88,  pxW: 744,  pxH: 1039 },
+  { id: 'print_3r',      name: '3R Print (89×127 mm)',   mmW: 89,  mmH: 127, pxW: 1050, pxH: 1500 },
+  { id: 'print_4r',      name: '4R Print (102×152 mm)',  mmW: 102, mmH: 152, pxW: 1200, pxH: 1800 },
+  { id: 'print_5r',      name: '5R Print (127×178 mm)',  mmW: 127, mmH: 178, pxW: 1500, pxH: 2100 },
+];
+
 /* ──────────────────── State ──────────────────── */
 const appState = {
   photos: [],
@@ -27,6 +41,7 @@ const appState = {
   showCutGuides: false,
   copies: 1,                   // How many copies of each photo to print
   printerName: '',
+  photoSizeId: 'passport',     // Selected photo size preset ID
   aadhaarFront: null,          // { id, name, originalPath, thumbnail, processedBuffer }
   aadhaarBack: null,           // { id, name, originalPath, thumbnail, processedBuffer }
   aadhaarCardPositions: {
@@ -47,6 +62,141 @@ function clamp(val, min, max) {
 function truncate(str, len = 18) {
   if (!str) return '';
   return str.length > len ? str.slice(0, len - 1) + '…' : str;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+/** Returns the currently selected photo size preset */
+function getPhotoSizePreset() {
+  return PHOTO_SIZE_PRESETS.find((p) => p.id === appState.photoSizeId) || PHOTO_SIZE_PRESETS[0];
+}
+
+/** Calculates optimal cols × rows for A4 based on photo dimensions in mm */
+function calculateOptimalLayout(mmW, mmH) {
+  const A4_W = 210;
+  const A4_H = 297;
+  const MARGIN = 10;
+  const GAP = 3;
+  const usableW = A4_W - 2 * MARGIN;
+  const usableH = A4_H - 2 * MARGIN;
+
+  // Try both orientations (portrait and landscape photo on portrait A4)
+  const layouts = [];
+
+  // Portrait orientation: photo width along A4 width
+  const colsP = Math.floor((usableW + GAP) / (mmW + GAP));
+  const rowsP = Math.floor((usableH + GAP) / (mmH + GAP));
+  if (colsP > 0 && rowsP > 0) layouts.push({ cols: colsP, rows: rowsP, total: colsP * rowsP });
+
+  // Landscape orientation: photo width along A4 height (rotated)
+  const colsL = Math.floor((usableW + GAP) / (mmH + GAP));
+  const rowsL = Math.floor((usableH + GAP) / (mmW + GAP));
+  if (colsL > 0 && rowsL > 0) layouts.push({ cols: colsL, rows: rowsL, total: colsL * rowsL });
+
+  // Pick the layout that fits the most photos
+  const best = layouts.sort((a, b) => b.total - a.total)[0];
+  if (best) return { cols: best.cols, rows: best.rows };
+
+  // Fallback: 1×1
+  return { cols: 1, rows: 1 };
+}
+
+/** Updates the photo size display text in the right panel */
+function updatePhotoSizeDisplay() {
+  const preset = getPhotoSizePreset();
+  const mmEl = document.getElementById('photo-size-mm');
+  const pxEl = document.getElementById('photo-size-px');
+  if (!mmEl || !pxEl) return;
+
+  if (appState.layoutMode === 'aadhaar-card') {
+    mmEl.textContent = 'Custom size (draggable)';
+    pxEl.textContent = 'Resize and position on the preview';
+    return;
+  }
+
+  mmEl.textContent = `${preset.mmW} mm × ${preset.mmH} mm`;
+  pxEl.textContent = `(${preset.pxW} × ${preset.pxH} px @ 300 DPI)`;
+}
+
+/** Re-processes all current photos with the new target dimensions */
+async function reprocessAllPhotos() {
+  if (appState.photos.length === 0) return;
+  const preset = getPhotoSizePreset();
+
+  appState.isProcessing = true;
+  updateProcessingStatus(true, 'Re-processing…');
+
+  for (const photo of appState.photos) {
+    if (!photo.originalPath) continue;
+    try {
+      PhotoGrid.showProcessing(photo.id);
+      const result = await api().processImage(photo.originalPath, {
+        targetWidth: preset.pxW,
+        targetHeight: preset.pxH,
+      });
+      if (result && result.success) {
+        photo.processedBuffer = result.buffer || null;
+        photo.thumbnail = `data:image/jpeg;base64,${photo.processedBuffer}`;
+        PhotoGrid.updateThumbnail(photo.id, photo.thumbnail, photo.aiAnalysis);
+      }
+      PhotoGrid.hideProcessing(photo.id);
+    } catch (err) {
+      console.warn('Re-process failed for', photo.name, err.message);
+      PhotoGrid.hideProcessing(photo.id);
+    }
+  }
+
+  appState.isProcessing = false;
+  updateProcessingStatus(false);
+  refreshPreview();
+}
+
+/** Handles photo size selection change */
+function handlePhotoSizeChange(sizeId) {
+  const preset = PHOTO_SIZE_PRESETS.find((p) => p.id === sizeId);
+  if (!preset) return;
+
+  appState.photoSizeId = sizeId;
+
+  // Calculate optimal A4 layout for this size
+  const layout = calculateOptimalLayout(preset.mmW, preset.mmH);
+  appState.layoutCols = layout.cols;
+  appState.layoutRows = layout.rows;
+
+  // Update UI inputs
+  const colsInput = document.getElementById('input-cols');
+  const rowsInput = document.getElementById('input-rows');
+  if (colsInput) colsInput.value = layout.cols;
+  if (rowsInput) rowsInput.value = layout.rows;
+
+  // Update display
+  updatePhotoSizeDisplay();
+  updatePhotoSizeBadge();
+
+  // Re-process existing photos with new dimensions
+  if (appState.photos.length > 0) {
+    reprocessAllPhotos();
+  } else {
+    refreshPreview();
+  }
+
+  // Persist selection
+  if (api().setSettings) {
+    api().setSettings({ photoSizeId: sizeId }).catch(() => {});
+  }
+}
+
+/** Updates the small badge next to the photo size label */
+function updatePhotoSizeBadge() {
+  const preset = getPhotoSizePreset();
+  const badge = document.getElementById('photo-size-badge');
+  if (badge) {
+    badge.textContent = `${preset.mmW}×${preset.mmH}`;
+  }
 }
 
 function formatBytes(bytes) {
@@ -83,6 +233,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateFooter();
   updatePhotoSizeDisplay();
   refreshPreview();
+
+  // Hide splash screen after initialization
+  const splash = document.getElementById('splash-overlay');
+  if (splash) {
+    splash.classList.add('hiding');
+    splash.addEventListener('transitionend', () => splash.remove(), { once: true });
+  }
 });
 
 /* ──────────────────── Settings ──────────────────── */
@@ -101,6 +258,7 @@ async function loadSettings() {
       if (res.settings.showCutGuides != null) appState.showCutGuides = res.settings.showCutGuides;
       if (res.settings.copies != null) appState.copies = res.settings.copies;
       if (res.settings.printerName != null) appState.printerName = res.settings.printerName;
+      if (res.settings.photoSizeId) appState.photoSizeId = res.settings.photoSizeId;
       if (res.settings.aadhaarCardPositions) {
         appState.aadhaarCardPositions = res.settings.aadhaarCardPositions;
       }
@@ -119,6 +277,11 @@ async function loadSettings() {
   document.getElementById('input-rows').value = appState.layoutRows;
   const copiesInput = document.getElementById('input-copies');
   if (copiesInput) copiesInput.value = appState.copies;
+
+  // Setup photo size selector with restored value
+  setupPhotoSizeSelector();
+  updatePhotoSizeDisplay();
+  updatePhotoSizeBadge();
 
   // Update layout mode UI
   const modeSelect = document.getElementById('layout-mode-select');
@@ -145,12 +308,14 @@ async function saveSettings() {
         pricePerPhoto: appState.settings.pricePerPhoto,
         geminiApiKey: appState.settings.apiKey,
         language: appState.settings.language,
+        darkMode: appState.settings.darkMode,
         layoutMode: appState.layoutMode,
         layoutCols: appState.layoutCols,
         layoutRows: appState.layoutRows,
         showCutGuides: appState.showCutGuides,
         copies: appState.copies,
         printerName: appState.printerName,
+        photoSizeId: appState.photoSizeId,
         aadhaarCardPositions: appState.aadhaarCardPositions,
       };
       await api().setSettings(payload);
@@ -258,8 +423,13 @@ async function handleAadhaarFile(file, side) {
     photo.thumbnail = dataUrl;
 
     // Try file path first, fallback to buffer processing for drag-and-drop
+    const sizeOpts = getPhotoSizePreset();
+    const processOptions = {
+      targetWidth: sizeOpts.pxW,
+      targetHeight: sizeOpts.pxH,
+    };
     if (api().processImage && file.path) {
-      const result = await api().processImage(file.path, {});
+      const result = await api().processImage(file.path, processOptions);
       if (result && result.success) {
         photo.processedBuffer = result.buffer || null;
       }
@@ -267,7 +437,7 @@ async function handleAadhaarFile(file, side) {
       // Extract base64 from data URL and process via buffer
       const base64 = dataUrl.split(',')[1];
       if (base64) {
-        const result = await api().processImageFromBuffer(base64, {});
+        const result = await api().processImageFromBuffer(base64, processOptions);
         if (result && result.success) {
           photo.processedBuffer = result.buffer || null;
         }
@@ -337,13 +507,18 @@ async function handleFilesSelected(files) {
       photo.thumbnail = dataUrl;
 
       // Try file path first, fallback to buffer processing for drag-and-drop
+      const sizeOpts = getPhotoSizePreset();
+      const processOptions = {
+        targetWidth: sizeOpts.pxW,
+        targetHeight: sizeOpts.pxH,
+      };
       let result = null;
       if (api().processImage && file.path) {
-        result = await api().processImage(file.path, {});
+        result = await api().processImage(file.path, processOptions);
       } else if (api().processImageFromBuffer && dataUrl) {
         const base64 = dataUrl.split(',')[1];
         if (base64) {
-          result = await api().processImageFromBuffer(base64, {});
+          result = await api().processImageFromBuffer(base64, processOptions);
         }
       }
 
@@ -480,6 +655,15 @@ async function handlePrint() {
   if (!validatePhotosBeforeAction('printing')) return;
   if (appState.isPrinting) return;
 
+  // Overflow guard
+  const totalPhotos = appState.layoutMode === 'grid'
+    ? appState.photos.length * Math.max(1, appState.copies || 1)
+    : ((appState.aadhaarFront ? 1 : 0) + (appState.aadhaarBack ? 1 : 0));
+  if (totalPhotos > 200) {
+    UIManager.showToast('Too many photos to print. Maximum 200 total.', 'warning');
+    return;
+  }
+
   appState.isPrinting = true;
   updateProcessingStatus(true, 'Printing…');
 
@@ -487,8 +671,10 @@ async function handlePrint() {
     const customerName = document.getElementById('input-customer-name').value.trim();
     const customerPhone = document.getElementById('input-customer-phone').value.trim();
 
+    let printResult = null;
     if (api().print) {
       const printPhotos = buildPrintPhotosList();
+      const preset = getPhotoSizePreset();
       const printOptions = {
         layout: `${appState.layoutCols}x${appState.layoutRows}`,
         layoutMode: appState.layoutMode,
@@ -496,13 +682,18 @@ async function handlePrint() {
         copies: 1,
         showCutGuides: appState.showCutGuides,
         printerName: appState.printerName || undefined,
+        photoWidthMM: preset.mmW,
+        photoHeightMM: preset.mmH,
       };
 
       if (appState.layoutMode === 'aadhaar-card') {
         printOptions.aadhaarCardPositions = appState.aadhaarCardPositions;
       }
 
-      await api().print(printPhotos, printOptions);
+      printResult = await api().print(printPhotos, printOptions);
+      if (!printResult || !printResult.success) {
+        throw new Error(printResult?.error || 'Print failed or was cancelled');
+      }
     }
 
     // Increment daily count
@@ -556,11 +747,14 @@ async function handleExportPDF() {
 
       if (dialogResult && !dialogResult.canceled && dialogResult.filePath) {
         const printPhotos = buildPrintPhotosList();
+        const preset = getPhotoSizePreset();
         const printOptions = {
           layout: `${appState.layoutCols}x${appState.layoutRows}`,
           layoutMode: appState.layoutMode,
           showCutGuides: appState.showCutGuides,
           printerName: appState.printerName || undefined,
+          photoWidthMM: preset.mmW,
+          photoHeightMM: preset.mmH,
         };
 
         if (appState.layoutMode === 'aadhaar-card') {
@@ -717,8 +911,8 @@ async function handleAIAnalyze() {
 /* ──────────────────── Recent Photos ──────────────────── */
 async function loadRecentPhotos() {
   try {
-    const list = api().getRecentPhotos ? await api().getRecentPhotos() : [];
-    PhotoGrid.renderRecentPhotos(list);
+    const result = api().getRecentPhotos ? await api().getRecentPhotos() : { photos: [] };
+    PhotoGrid.renderRecentPhotos(result?.photos || []);
   } catch (err) {
     console.warn('Failed to load recent photos:', err);
   }
@@ -853,6 +1047,26 @@ function updatePageIndicator() {
   nextBtn.disabled = appState.currentPage >= totalPages;
 }
 
+/* ──────────────────── Photo Size Selector ──────────────────── */
+function setupPhotoSizeSelector() {
+  const select = document.getElementById('photo-size-select');
+  if (!select) return;
+
+  // Populate dropdown
+  select.innerHTML = '';
+  PHOTO_SIZE_PRESETS.forEach((preset) => {
+    const opt = document.createElement('option');
+    opt.value = preset.id;
+    opt.textContent = preset.name;
+    if (preset.id === appState.photoSizeId) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  select.addEventListener('change', () => {
+    handlePhotoSizeChange(select.value);
+  });
+}
+
 function updatePhotoSizeDisplay() {
   const mmEl = document.getElementById('photo-size-mm');
   const pxEl = document.getElementById('photo-size-px');
@@ -864,16 +1078,9 @@ function updatePhotoSizeDisplay() {
     return;
   }
 
-  // Passport photo is always 35mm x 45mm standard size
-  const photoW = 35;
-  const photoH = 45;
-
-  // Convert to pixels at 300 DPI
-  const pxW = Math.round(photoW * 300 / 25.4);
-  const pxH = Math.round(photoH * 300 / 25.4);
-
-  mmEl.textContent = `${photoW} mm × ${photoH} mm`;
-  pxEl.textContent = `(${pxW} × ${pxH} px @ 300 DPI) — Indian Passport / Aadhaar Standard`;
+  const preset = getPhotoSizePreset();
+  mmEl.textContent = `${preset.mmW} mm × ${preset.mmH} mm`;
+  pxEl.textContent = `(${preset.pxW} × ${preset.pxH} px @ 300 DPI)`;
 }
 
 function updateLayoutModeUI() {
@@ -913,6 +1120,23 @@ function setupButtonHandlers() {
     }
   });
 
+  // About
+  document.getElementById('btn-about').addEventListener('click', showAboutDialog);
+
+  // Size Reference (info button next to dropdown)
+  const btnSizeRef = document.getElementById('btn-size-reference');
+  if (btnSizeRef) {
+    btnSizeRef.addEventListener('click', () => {
+      UIManager.showModal('size-reference-modal');
+    });
+  }
+  const btnCloseSizeRef = document.getElementById('btn-close-size-ref');
+  if (btnCloseSizeRef) {
+    btnCloseSizeRef.addEventListener('click', () => {
+      UIManager.hideModal('size-reference-modal');
+    });
+  }
+
   // Settings
   document.getElementById('btn-settings').addEventListener('click', () => {
     populateSettingsForm();
@@ -950,11 +1174,23 @@ function setupButtonHandlers() {
   document.getElementById('btn-ai-analyze').addEventListener('click', handleAIAnalyze);
 
   // Clear all
-  document.getElementById('btn-clear-all').addEventListener('click', handleClearAll);
+  document.getElementById('btn-clear-all').addEventListener('click', () => {
+    const hasPhotos = appState.photos.length > 0 || appState.aadhaarFront || appState.aadhaarBack;
+    if (!hasPhotos) {
+      handleClearAll();
+      return;
+    }
+    if (confirm('Clear all photos? This cannot be undone.')) {
+      handleClearAll();
+    }
+  });
 
   // Receipt modal
   document.getElementById('btn-close-receipt').addEventListener('click', () => UIManager.hideModal('receipt-modal'));
   document.getElementById('btn-receipt-print').addEventListener('click', () => ReceiptManager.printReceipt());
+
+  // About modal
+  document.getElementById('btn-close-about').addEventListener('click', () => UIManager.hideModal('about-modal'));
 
   // Recent photos toggle
   document.getElementById('btn-toggle-recent').addEventListener('click', () => {
@@ -1010,6 +1246,15 @@ function setupCopiesInput() {
   copiesInput.addEventListener('change', () => {
     appState.copies = clamp(parseInt(copiesInput.value, 10) || 1, 1, 100);
     copiesInput.value = appState.copies;
+
+    // Overflow guard: max 200 total photo slots
+    const total = appState.photos.length * appState.copies;
+    if (appState.photos.length > 0 && total > 200) {
+      appState.copies = Math.max(1, Math.floor(200 / appState.photos.length));
+      copiesInput.value = appState.copies;
+      UIManager.showToast('Too many photos. Maximum 200 total (photos × copies).', 'warning');
+    }
+
     refreshPreview();
   });
 }
@@ -1207,7 +1452,31 @@ function setupKeyboardShortcuts() {
   });
 }
 
+/* ──────────────────── About Dialog ──────────────────── */
+async function showAboutDialog() {
+  const content = document.getElementById('about-content');
+  if (!content) return;
+
+  let aboutInfo = { name: 'Aadhaar Photo Printer', version: '1.0.0' };
+  try {
+    if (api().getAboutInfo) {
+      const res = await api().getAboutInfo();
+      if (res && res.success) aboutInfo = res;
+    }
+  } catch (err) {
+    console.warn('Failed to fetch about info:', err);
+  }
+
+  content.innerHTML = `
+    <div class="about-version">${aboutInfo.name} v${aboutInfo.version}</div>
+    <div class="about-detail">Electron ${aboutInfo.electronVersion || '—'}</div>
+    <div class="about-detail">Node ${aboutInfo.nodeVersion || '—'}</div>
+  `;
+  UIManager.showModal('about-modal');
+}
+
 /* ──────────────────── Global access for child modules ──────────────────── */
+window.PHOTO_SIZE_PRESETS = PHOTO_SIZE_PRESETS;
 window.appState = appState;
 window.handleRemovePhoto = handleRemovePhoto;
 window.handleFilesSelected = handleFilesSelected;

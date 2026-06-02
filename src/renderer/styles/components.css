@@ -386,7 +386,7 @@
 
 /* Photo cell */
 .preview-cell {
-  aspect-ratio: 35 / 45;
+  aspect-ratio: var(--photo-aspect-ratio, 35 / 45);
   border: 1px dashed rgba(0,0,0,0.10);
   border-radius: 2px;
   overflow: hidden;
@@ -1336,6 +1336,55 @@
   color: var(--text-tertiary);
 }
 
+/* ──── Photo Size Header (label + info button) ──── */
+.photo-size-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+.photo-size-header .panel-sub-heading {
+  margin-bottom: 0;
+}
+
+.icon-btn-xs {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.icon-btn-xs:hover {
+  color: var(--primary-500);
+  background: var(--primary-50);
+}
+
+/* ──── Photo Size Select ──── */
+.photo-size-select {
+  width: 100%;
+  padding: 10px 32px 10px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%235A6270' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+  margin-top: var(--space-xs);
+}
+.photo-size-select:hover,
+.photo-size-select:focus {
+  border-color: var(--primary-400);
+}
+
 /* ──── Toggle Switch Row ──── */
 .toggle-row {
   display: flex;
@@ -1418,11 +1467,8 @@
   position: absolute;
   border: 2px dashed var(--primary-400);
   border-radius: var(--radius-md);
-  background: rgba(30,136,229,0.05);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  background:
+    linear-gradient(135deg, rgba(30,136,229,0.06) 0%, rgba(30,136,229,0.12) 100%);
   overflow: hidden;
   cursor: move;
   user-select: none;
@@ -1456,6 +1502,9 @@
 }
 
 .aadhaar-photo-slot .slot-img {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -1463,6 +1512,10 @@
 }
 
 .aadhaar-photo-slot .slot-placeholder {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   font-size: var(--font-size-2xl);
   color: var(--primary-300);
   pointer-events: none;
@@ -1688,4 +1741,127 @@
   vertical-align: middle;
   margin-right: 4px;
   color: var(--primary-500);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PHOTO SIZE GUIDE MODAL
+   ═══════════════════════════════════════════════════════════════════ */
+
+.size-guide-content {
+  max-width: 720px;
+  max-height: 85vh;
+  padding: var(--space-lg);
+}
+
+.size-guide-body {
+  overflow-y: auto;
+  max-height: calc(85vh - 80px);
+  padding-right: 4px;
+}
+
+.size-guide-heading {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: var(--space-lg) 0 var(--space-sm);
+}
+.size-guide-heading:first-child {
+  margin-top: 0;
+}
+
+.size-table-wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.size-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.size-table thead {
+  background: var(--bg-tertiary);
+  position: sticky;
+  top: 0;
+}
+
+.size-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.size-table td {
+  padding: 8px 12px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.size-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.size-table tbody tr:hover {
+  background: var(--bg-tertiary);
+}
+
+.size-table td strong {
+  color: var(--primary-700);
+}
+
+.size-guide-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--space-md);
+}
+
+.size-guide-note {
+  margin-top: var(--space-lg);
+  padding: var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--primary-500);
+}
+
+/* Size guide button */
+.btn-text-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-600);
+  background: var(--primary-50);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  cursor: pointer;
+  border: none;
+}
+.btn-text-sm:hover {
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+[data-theme="dark"] .btn-text-sm {
+  background: rgba(30,136,229,0.12);
+  color: var(--primary-300);
+}
+[data-theme="dark"] .btn-text-sm:hover {
+  background: rgba(30,136,229,0.2);
+  color: var(--primary-200);
 }

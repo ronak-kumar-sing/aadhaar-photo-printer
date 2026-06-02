@@ -503,10 +503,6 @@ function blendWithMask(original, modified, mask, width, height) {
   return result;
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
-
 /**
  * Rotates a base64-encoded image buffer by the specified angle.
  *

@@ -28,10 +28,32 @@ const PagePreview = (() => {
     return Math.max(1, Math.ceil(photoCount / max));
   }
 
+  /* ──────────── Update Aspect Ratio ──────────── */
+  function updateAspectRatio() {
+    const state = window.appState;
+    if (!state || !state.photoSizeId) return;
+    const presets = window.PHOTO_SIZE_PRESETS;
+    if (!presets) return;
+    const preset = presets.find((p) => p.id === state.photoSizeId);
+    if (!preset) return;
+
+    const ratio = `${preset.mmW} / ${preset.mmH}`;
+    document.documentElement.style.setProperty('--photo-aspect-ratio', ratio);
+
+    // Also update photo card aspect ratio
+    const style = document.getElementById('dynamic-photo-card-style');
+    if (style) {
+      style.textContent = `.photo-card { height: ${Math.round(60 * preset.mmH / preset.mmW)}px !important; }`;
+    }
+  }
+
   /* ──────────── Render Grid Mode ──────────── */
   function renderGrid(photos, layout, page = 1) {
     const previewEl = document.getElementById('a4-preview');
     if (!previewEl) return;
+
+    // Update aspect ratio before rendering
+    updateAspectRatio();
 
     const cols = layout.cols || 4;
     const rows = layout.rows || 3;
