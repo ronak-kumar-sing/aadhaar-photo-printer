@@ -132,11 +132,12 @@ const PagePreview = (() => {
     slot.appendChild(label);
 
     if (photo && photo.thumbnail) {
-      const img = document.createElement('img');
-      img.className = 'slot-img';
-      img.src = photo.thumbnail;
-      img.alt = photo.name || side;
-      slot.appendChild(img);
+      const imgDiv = document.createElement('div');
+      imgDiv.className = 'slot-img-bg';
+      imgDiv.style.backgroundImage = `url('${photo.thumbnail}')`;
+      imgDiv.setAttribute('role', 'img');
+      imgDiv.setAttribute('aria-label', photo.name || side);
+      slot.appendChild(imgDiv);
     } else {
       const placeholder = document.createElement('span');
       placeholder.className = 'slot-placeholder';

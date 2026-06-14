@@ -15,13 +15,14 @@ const fs = require('fs');
 
 // --- Module Imports ---
 const { processImage, processImageFromBuffer, processImages, getImageInfo, rotateBase64Image, reprocessFromBuffer } = require('./imageProcessor');
-const { printPhotos, exportToPDF, getPrinters } = require('./printManager');
+const { printPhotos, exportToPDF, exportToPNG, getPrinters } = require('./printManager');
 const { DataStore } = require('./dataStore');
 const { saveToRecent, getRecentPhotos, backupPhotos, cleanupOldRecent } = require('./fileManager');
 const { GeminiPhotoAnalyzer } = require('./geminiAI');
 const { analyzeForEnhancement, applyEnhancements, applyWhiteBalance, applySharpening, applyBackgroundWhitening } = require('./aiEnhancer');
 const { autoEnhanceOffline, autoWhiteBalanceOffline, autoSharpenOffline, backgroundWhiteningOffline } = require('./offlineEnhancer');
 const { Logger } = require('./logger');
+const { ScannerWatcher } = require('./scannerWatcher');
 
 // --- Globals ---
 let mainWindow = null;
@@ -29,6 +30,7 @@ let dataStore = null;
 let geminiAnalyzer = null;
 let tray = null;
 let logger = null;
+let scannerWatcher = null;
 
 // ============================================================================
 // Single Instance Lock
@@ -283,6 +285,16 @@ function registerIPCHandlers() {
       return result;
     } catch (error) {
       console.error('[IPC] print:toPDF error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('print:toPNG', async (_event, photos, outputPath, options = {}) => {
+    try {
+      const result = await exportToPNG(mainWindow, photos, outputPath, options);
+      return result;
+    } catch (error) {
+      console.error('[IPC] print:toPNG error:', error);
       return { success: false, error: error.message };
     }
   });
@@ -572,6 +584,45 @@ function registerIPCHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // --------------------------------------------------------------------------
+  // Scanner Operations
+  // --------------------------------------------------------------------------
+
+  ipcMain.handle('scanner:getDir', async () => {
+    try {
+      if (scannerWatcher) {
+        return { success: true, path: scannerWatcher.getScanDir() };
+      }
+      return { success: false, path: '' };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('scanner:openFolder', async () => {
+    try {
+      if (scannerWatcher) {
+        scannerWatcher.openScanFolder();
+        return { success: true };
+      }
+      return { success: false, error: 'Scanner not initialized' };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('scanner:getExisting', async () => {
+    try {
+      if (scannerWatcher) {
+        const files = scannerWatcher.getExistingScans();
+        return { success: true, files };
+      }
+      return { success: false, files: [] };
+    } catch (error) {
+      return { success: false, files: [], error: error.message };
+    }
+  });
 }
 
 // ============================================================================
@@ -647,6 +698,10 @@ app.whenReady().then(() => {
 
   // Create system tray icon
   createTray();
+
+  // Initialize scanner watcher
+  scannerWatcher = new ScannerWatcher(mainWindow);
+  scannerWatcher.start();
 
   // Periodic cleanup of old recent files (run once at startup)
   cleanupOldRecent(30).catch((err) => {

@@ -32,6 +32,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   // Print
   'print:execute',
   'print:toPDF',
+  'print:toPNG',
   'print:getPrinters',
   // File
   'file:getRecent',
@@ -60,6 +61,10 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   // Utility
   'app:getPath',
   'app:about',
+  // Scanner
+  'scanner:getDir',
+  'scanner:openFolder',
+  'scanner:getExisting',
 ]);
 
 /**
@@ -67,6 +72,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
  */
 const ALLOWED_RECEIVE_CHANNELS = new Set([
   'processing:progress',
+  'scanner:newFile',
 ]);
 
 /**
@@ -182,6 +188,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, filePath?: string, fileSize?: number, error?: string}>}
    */
   printToPDF: (photos, outputPath, options) => safeInvoke('print:toPDF', photos, outputPath, options),
+
+  /**
+   * Exports photos to a PNG file at the specified output path.
+   * @param {Array<{buffer: string, name: string}>} photos - Base64 photo buffers
+   * @param {string} outputPath - Where to save the PNG
+   * @param {Object} [options]  - Print/layout options
+   * @returns {Promise<{success: boolean, filePath?: string, fileSize?: number, error?: string}>}
+   */
+  printToPNG: (photos, outputPath, options) => safeInvoke('print:toPNG', photos, outputPath, options),
 
   /**
    * Retrieves the list of system printers.
@@ -364,4 +379,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, name: string, version: string, electronVersion: string, nodeVersion: string}>}
    */
   getAboutInfo: () => safeInvoke('app:about'),
+
+  // --------------------------------------------------------------------------
+  // Scanner Operations
+  // --------------------------------------------------------------------------
+
+  /**
+   * Gets the path to the watched scans directory.
+   * @returns {Promise<{success: boolean, path: string}>}
+   */
+  getScanDir: () => safeInvoke('scanner:getDir'),
+
+  /**
+   * Opens the scans folder in the system file manager.
+   * @returns {Promise<{success: boolean}>}
+   */
+  openScanFolder: () => safeInvoke('scanner:openFolder'),
+
+  /**
+   * Gets a list of existing scanned files.
+   * @returns {Promise<{success: boolean, files: string[]}>}
+   */
+  getExistingScans: () => safeInvoke('scanner:getExisting'),
+
+  /**
+   * Subscribes to new scan file notifications.
+   * @param {Function} callback - Called with ({ path, name }) when a new scan is detected
+   * @returns {Function} - Unsubscribe function
+   */
+  onScanNewFile: (callback) => safeOn('scanner:newFile', callback),
 });

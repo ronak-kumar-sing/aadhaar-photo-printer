@@ -114,8 +114,8 @@ async function processBuffer(inputBuffer, options = {}, originalSize = 0) {
     .rotate()
     // Resize to target with smart crop (attention = focus on interesting regions)
     .resize(targetW, targetH, {
-      fit: 'cover',
-      position: 'attention',
+      fit: options.fit || 'cover',
+      position: options.position || 'attention',
       withoutEnlargement: false,
     });
 
@@ -318,8 +318,8 @@ async function applyEnhancementPipeline(inputBuffer, params = {}) {
   let pipeline = sharp(inputBuffer)
     .rotate()
     .resize(targetW, targetH, {
-      fit: 'cover',
-      position: 'attention',
+      fit: params.fit || 'cover',
+      position: params.position || 'attention',
       withoutEnlargement: false,
     });
 

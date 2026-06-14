@@ -132,6 +132,25 @@
         </div>
       </div>
 
+      <!-- Scanner Panel -->
+      <div class="panel-section" id="scanner-section">
+        <h3 class="panel-sub-heading">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+          Scanner
+        </h3>
+        <p class="scanner-desc">Place photo in scanner, then open scan folder.</p>
+        <div class="scanner-actions">
+          <button id="btn-open-scans" class="action-btn" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            Open Scans Folder
+          </button>
+        </div>
+        <div id="scanner-status" class="scanner-status">
+          <span class="status-dot status-inactive"></span>
+          <span id="scanner-status-text">Watching for scans…</span>
+        </div>
+      </div>
+
       <!-- Photo List -->
       <div class="panel-section flex-grow" id="photo-list-section">
         <div class="panel-heading-row">
@@ -283,6 +302,11 @@
           <span class="toggle-slider"></span>
           <span class="toggle-label">Show cut guides</span>
         </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="chk-grayscale" class="toggle-input">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Black & White Print</span>
+        </label>
       </div>
 
       <!-- Customer Info -->
@@ -306,6 +330,10 @@
         <button id="btn-export-pdf" class="action-btn" title="Export as PDF">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span>Export PDF</span>
+        </button>
+        <button id="btn-export-png" class="action-btn" title="Export as PNG">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span>Export PNG</span>
         </button>
         <button id="btn-print-receipt" class="action-btn" title="Print receipt">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4a2 2 0 012-2h8.5L20 7.5V20a2 2 0 01-2 2H6a2 2 0 01-2-2v-3"/><line x1="2" y1="12" x2="14" y2="12"/><polyline points="8 8 2 12 8 16"/></svg>

@@ -62,7 +62,7 @@ async function printPhotos(mainWindow, photos, options = {}) {
       pageSize: 'A4',
       margins: { marginType: 'none' },
       copies: options.copies || 1,
-      color: true,
+      color: options.grayscale ? false : true,
     };
 
     let usedFallback = false;
@@ -142,6 +142,66 @@ async function exportToPDF(mainWindow, photos, outputPath, options = {}) {
     return { success: true, filePath: outputPath, fileSize };
   } catch (error) {
     console.error('[PrintManager] PDF export error:', error.message);
+    return { success: false, error: error.message };
+  } finally {
+    if (printWindow && !printWindow.isDestroyed()) {
+      printWindow.close();
+    }
+    if (tempFile) {
+      cleanupTempFile(tempFile);
+    }
+  }
+}
+
+/**
+ * Exports photos to a PNG file.
+ */
+async function exportToPNG(mainWindow, photos, outputPath, options = {}) {
+  if (!photos || photos.length === 0) {
+    return { success: false, error: 'No photos provided.' };
+  }
+  if (!outputPath) {
+    return { success: false, error: 'No output path specified.' };
+  }
+
+  // Force PNG export styles (clean background, zero padding, margin collapsing prevention)
+  const printOptions = {
+    ...options,
+    isPNGExport: true,
+  };
+
+  const html = generatePrintHTML(photos, printOptions);
+  let printWindow = null;
+  let tempFile = null;
+
+  try {
+    tempFile = await writeTempHTML(html);
+
+    // Calculate page count to determine window height
+    const pagesCount = options.layoutMode === 'aadhaar-card' ? 1 : calculatePageCount(photos.length, options);
+
+    // Create hidden window sized to contain all pages stacked vertically
+    // 794px width is A4 width at 96 DPI, 1123px is A4 height at 96 DPI
+    printWindow = createHiddenPrintWindow(mainWindow, 794, 1123 * pagesCount);
+
+    await printWindow.loadURL(`file://${tempFile}`);
+    await waitForImagesLoaded(printWindow);
+
+    // Capture the entire page using webContents.capturePage()
+    const image = await printWindow.webContents.capturePage();
+    const pngBuffer = image.toPNG();
+
+    const outputDir = path.dirname(outputPath);
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    fs.writeFileSync(outputPath, pngBuffer);
+    const fileSize = pngBuffer.length;
+
+    return { success: true, filePath: outputPath, fileSize };
+  } catch (error) {
+    console.error('[PrintManager] PNG export error:', error.message);
     return { success: false, error: error.message };
   } finally {
     if (printWindow && !printWindow.isDestroyed()) {
@@ -276,7 +336,7 @@ function generateGridHTML(photos, options = {}) {
     `;
   }).join('');
 
-  return buildDocument(pagesHTML, USABLE_HEIGHT_MM, false);
+  return buildDocument(pagesHTML, USABLE_HEIGHT_MM, false, options.isPNGExport, options.grayscale);
 }
 
 function generateAadhaarCardHTML(photos, options = {}) {
@@ -322,11 +382,41 @@ function generateAadhaarCardHTML(photos, options = {}) {
     </div>
   `;
 
-  return buildDocument(pagesHTML, USABLE_HEIGHT_MM, true);
+  return buildDocument(pagesHTML, USABLE_HEIGHT_MM, true, options.isPNGExport, options.grayscale);
 }
 
-function buildDocument(pagesHTML, usableHeightMM, isAadhaarCard = false) {
+function buildDocument(pagesHTML, usableHeightMM, isAadhaarCard = false, isPNGExport = false, isGrayscale = false) {
   const imgFit = isAadhaarCard ? 'contain' : 'cover';
+  const screenStyles = isPNGExport ? `
+    @media screen {
+      body {
+        background: #ffffff;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+        width: 210mm;
+        display: flex;
+        flex-direction: column;
+      }
+      .page {
+        background: #ffffff;
+        box-shadow: none;
+        border: none;
+        margin: 10mm auto;
+        width: 190mm;
+        height: 277mm;
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+    }
+  ` : `
+    @media screen {
+      body { background: #f0f0f0; padding: 20px; }
+      .page { background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.15); margin-bottom: 20px; border: 1px solid #ccc; }
+    }
+  `;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -359,6 +449,7 @@ function buildDocument(pagesHTML, usableHeightMM, isAadhaarCard = false) {
       width: 100%; height: 100%;
       object-fit: ${imgFit};
       display: block;
+      ${isGrayscale ? 'filter: grayscale(100%);' : ''}
     }
     .cut-guide {
       position: absolute;
@@ -371,10 +462,7 @@ function buildDocument(pagesHTML, usableHeightMM, isAadhaarCard = false) {
       html, body { width: auto; }
       .page { width: ${USABLE_WIDTH_MM}mm; height: ${usableHeightMM}mm; }
     }
-    @media screen {
-      body { background: #f0f0f0; padding: 20px; }
-      .page { background: white; box-shadow: 0 2px 8px rgba(0,0,0,0.15); margin-bottom: 20px; border: 1px solid #ccc; }
-    }
+    ${screenStyles}
   </style>
 </head>
 <body>
@@ -387,11 +475,11 @@ function buildDocument(pagesHTML, usableHeightMM, isAadhaarCard = false) {
 // Internal Helpers
 // ============================================================================
 
-function createHiddenPrintWindow(parent) {
+function createHiddenPrintWindow(parent, width = 794, height = 1123) {
   return new BrowserWindow({
     show: false,
-    width: 794,
-    height: 1123,
+    width,
+    height,
     parent: parent || undefined,
     webPreferences: {
       contextIsolation: true,
@@ -492,6 +580,7 @@ function executePrint(win, settings) {
 module.exports = {
   printPhotos,
   exportToPDF,
+  exportToPNG,
   getPrinters,
   generatePrintHTML,
 };

@@ -39,6 +39,7 @@ const appState = {
   isProcessing: false,
   isPrinting: false,
   showCutGuides: false,
+  printGrayscale: false,
   copies: 1,                   // How many copies of each photo to print
   printerName: '',
   photoSizeId: 'passport',     // Selected photo size preset ID
@@ -228,6 +229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupPageNavigation();
   setupAadhaarDragResize();
   setupCopiesInput();
+  setupScanner();
   if (window.AIEditor) AIEditor.init();
   loadRecentPhotos();
   updateFooter();
@@ -345,6 +347,40 @@ function applyTheme(dark) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
 }
 
+/* ──────────────────── Scanner ──────────────────── */
+function setupScanner() {
+  // Listen for new scan files from main process
+  if (api().onScanNewFile) {
+    api().onScanNewFile((data) => {
+      if (!data || !data.path) return;
+      console.log('[Scanner] New file detected:', data.path);
+      // Create a fake File object with the path and import it
+      const fakeFile = { path: data.path, name: data.name || 'scan.jpg', size: 0 };
+      if (typeof window.handleFilesSelected === 'function') {
+        window.handleFilesSelected([fakeFile]);
+        UIManager.showToast('New scan imported', 'success');
+      }
+      // Update scanner status
+      const statusText = document.getElementById('scanner-status-text');
+      const statusDot = document.querySelector('#scanner-status .status-dot');
+      if (statusText) statusText.textContent = `Imported: ${data.name}`;
+      if (statusDot) statusDot.className = 'status-dot status-ready';
+    });
+  }
+
+  // Also check for existing scans on startup
+  if (api().getExistingScans) {
+    api().getExistingScans().then((res) => {
+      if (res && res.success && res.files && res.files.length > 0) {
+        const statusText = document.getElementById('scanner-status-text');
+        if (statusText) {
+          statusText.textContent = `${res.files.length} scan(s) in folder`;
+        }
+      }
+    }).catch(() => {});
+  }
+}
+
 /* ──────────────────── Upload Zone ──────────────────── */
 function setupUploadZone() {
   const zone = document.getElementById('upload-zone');
@@ -423,10 +459,10 @@ async function handleAadhaarFile(file, side) {
     photo.thumbnail = dataUrl;
 
     // Try file path first, fallback to buffer processing for drag-and-drop
-    const sizeOpts = getPhotoSizePreset();
     const processOptions = {
-      targetWidth: sizeOpts.pxW,
-      targetHeight: sizeOpts.pxH,
+      targetWidth: 1500,
+      targetHeight: 1500,
+      fit: 'inside',
     };
     if (api().processImage && file.path) {
       const result = await api().processImage(file.path, processOptions);
@@ -681,6 +717,7 @@ async function handlePrint() {
         quality: appState.selectedQuality,
         copies: 1,
         showCutGuides: appState.showCutGuides,
+        grayscale: appState.printGrayscale,
         printerName: appState.printerName || undefined,
         photoWidthMM: preset.mmW,
         photoHeightMM: preset.mmH,
@@ -752,6 +789,7 @@ async function handleExportPDF() {
           layout: `${appState.layoutCols}x${appState.layoutRows}`,
           layoutMode: appState.layoutMode,
           showCutGuides: appState.showCutGuides,
+          grayscale: appState.printGrayscale,
           printerName: appState.printerName || undefined,
           photoWidthMM: preset.mmW,
           photoHeightMM: preset.mmH,
@@ -774,6 +812,51 @@ async function handleExportPDF() {
   } catch (err) {
     console.error('PDF export error:', err);
     UIManager.showToast('PDF export failed', 'error');
+  }
+}
+
+/* ──────────────────── Export PNG ──────────────────── */
+async function handleExportPNG() {
+  if (!validatePhotosBeforeAction('exporting')) return;
+
+  try {
+    if (api().printToPNG && api().showSaveDialog) {
+      const dialogResult = await api().showSaveDialog({
+        title: 'Export Photos to PNG',
+        defaultPath: 'aadhaar_photos.png',
+        filters: [{ name: 'PNG Files', extensions: ['png'] }],
+      });
+
+      if (dialogResult && !dialogResult.canceled && dialogResult.filePath) {
+        const printPhotos = buildPrintPhotosList();
+        const preset = getPhotoSizePreset();
+        const printOptions = {
+          layout: `${appState.layoutCols}x${appState.layoutRows}`,
+          layoutMode: appState.layoutMode,
+          showCutGuides: appState.showCutGuides,
+          grayscale: appState.printGrayscale,
+          printerName: appState.printerName || undefined,
+          photoWidthMM: preset.mmW,
+          photoHeightMM: preset.mmH,
+        };
+
+        if (appState.layoutMode === 'aadhaar-card') {
+          printOptions.aadhaarCardPositions = appState.aadhaarCardPositions;
+        }
+
+        const result = await api().printToPNG(printPhotos, dialogResult.filePath, printOptions);
+        if (result && result.success) {
+          UIManager.showToast(`PNG saved: ${truncate(dialogResult.filePath, 40)}`, 'success', 4000);
+        } else {
+          throw new Error(result ? result.error : 'Failed to generate PNG');
+        }
+      }
+    } else {
+      UIManager.showToast('PNG export not available', 'info');
+    }
+  } catch (err) {
+    console.error('PNG export error:', err);
+    UIManager.showToast('PNG export failed', 'error');
   }
 }
 
@@ -1169,6 +1252,7 @@ function setupButtonHandlers() {
 
   // Actions
   document.getElementById('btn-export-pdf').addEventListener('click', handleExportPDF);
+  document.getElementById('btn-export-png').addEventListener('click', handleExportPNG);
   document.getElementById('btn-print-receipt').addEventListener('click', handlePrintReceipt);
   document.getElementById('btn-backup').addEventListener('click', handleBackup);
   document.getElementById('btn-ai-analyze').addEventListener('click', handleAIAnalyze);
@@ -1191,6 +1275,16 @@ function setupButtonHandlers() {
 
   // About modal
   document.getElementById('btn-close-about').addEventListener('click', () => UIManager.hideModal('about-modal'));
+
+  // Scanner
+  const btnOpenScans = document.getElementById('btn-open-scans');
+  if (btnOpenScans) {
+    btnOpenScans.addEventListener('click', () => {
+      if (api().openScanFolder) {
+        api().openScanFolder();
+      }
+    });
+  }
 
   // Recent photos toggle
   document.getElementById('btn-toggle-recent').addEventListener('click', () => {
@@ -1262,10 +1356,18 @@ function setupCopiesInput() {
 /* ──────────────────── Print Options ──────────────────── */
 function setupPrintOptions() {
   const cutGuidesChk = document.getElementById('chk-cut-guides');
+  if (cutGuidesChk) {
+    cutGuidesChk.addEventListener('change', () => {
+      appState.showCutGuides = cutGuidesChk.checked;
+    });
+  }
 
-  cutGuidesChk.addEventListener('change', () => {
-    appState.showCutGuides = cutGuidesChk.checked;
-  });
+  const grayscaleChk = document.getElementById('chk-grayscale');
+  if (grayscaleChk) {
+    grayscaleChk.addEventListener('change', () => {
+      appState.printGrayscale = grayscaleChk.checked;
+    });
+  }
 }
 
 /* ──────────────────── Printer Select ──────────────────── */
