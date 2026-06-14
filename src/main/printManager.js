@@ -16,6 +16,7 @@ const { BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const url = require('url');
 
 // ============================================================================
 // Constants — A4 & Photo Dimensions (mm)
@@ -53,7 +54,7 @@ async function printPhotos(mainWindow, photos, options = {}) {
   try {
     tempFile = await writeTempHTML(html);
     printWindow = createHiddenPrintWindow(mainWindow);
-    await printWindow.loadURL(`file://${tempFile}`);
+    await printWindow.loadURL(url.pathToFileURL(tempFile).href);
     await waitForImagesLoaded(printWindow);
 
     const printSettings = {
@@ -120,7 +121,7 @@ async function exportToPDF(mainWindow, photos, outputPath, options = {}) {
   try {
     tempFile = await writeTempHTML(html);
     printWindow = createHiddenPrintWindow(mainWindow);
-    await printWindow.loadURL(`file://${tempFile}`);
+    await printWindow.loadURL(url.pathToFileURL(tempFile).href);
     await waitForImagesLoaded(printWindow);
 
     const pdfBuffer = await printWindow.webContents.printToPDF({
@@ -184,7 +185,7 @@ async function exportToPNG(mainWindow, photos, outputPath, options = {}) {
     // 794px width is A4 width at 96 DPI, 1123px is A4 height at 96 DPI
     printWindow = createHiddenPrintWindow(mainWindow, 794, 1123 * pagesCount);
 
-    await printWindow.loadURL(`file://${tempFile}`);
+    await printWindow.loadURL(url.pathToFileURL(tempFile).href);
     await waitForImagesLoaded(printWindow);
 
     // Capture the entire page using webContents.capturePage()
