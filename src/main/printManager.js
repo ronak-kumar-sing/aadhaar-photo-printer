@@ -56,6 +56,7 @@ async function printPhotos(mainWindow, photos, options = {}) {
     printWindow = createHiddenPrintWindow(mainWindow);
     await printWindow.loadURL(url.pathToFileURL(tempFile).href);
     await waitForImagesLoaded(printWindow);
+    await delay(200);
 
     const printSettings = {
       silent: false,
@@ -123,6 +124,7 @@ async function exportToPDF(mainWindow, photos, outputPath, options = {}) {
     printWindow = createHiddenPrintWindow(mainWindow);
     await printWindow.loadURL(url.pathToFileURL(tempFile).href);
     await waitForImagesLoaded(printWindow);
+    await delay(200);
 
     const pdfBuffer = await printWindow.webContents.printToPDF({
       pageSize: 'A4',
@@ -187,6 +189,7 @@ async function exportToPNG(mainWindow, photos, outputPath, options = {}) {
 
     await printWindow.loadURL(url.pathToFileURL(tempFile).href);
     await waitForImagesLoaded(printWindow);
+    await delay(200);
 
     // Capture the entire page using webContents.capturePage()
     const image = await printWindow.webContents.capturePage();
@@ -477,15 +480,22 @@ function buildDocument(pagesHTML, usableHeightMM, isAadhaarCard = false, isPNGEx
 // ============================================================================
 
 function createHiddenPrintWindow(parent, width = 794, height = 1123) {
+  const isWindows = process.platform === 'win32';
   return new BrowserWindow({
-    show: false,
+    show: isWindows,
+    x: isWindows ? -20000 : undefined,
+    y: isWindows ? -20000 : undefined,
     width,
     height,
     parent: parent || undefined,
+    frame: false,
+    focusable: false,
+    skipTaskbar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       offscreen: false,
+      backgroundThrottling: false,
     },
   });
 }
@@ -501,7 +511,7 @@ async function waitForImagesLoaded(win) {
         const total = images.length;
         function onLoad() { loaded++; if (loaded >= total) resolve(); }
         images.forEach((img) => {
-          if (img.complete && img.naturalHeight > 0) { onLoad(); }
+          if (img.complete) { onLoad(); }
           else { img.addEventListener('load', onLoad); img.addEventListener('error', onLoad); }
         });
         setTimeout(resolve, 8000);
